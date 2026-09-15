@@ -47,8 +47,8 @@ market_type = st.sidebar.radio(
 
 if market_type == "📊 NSE & BSE Indices":
     targets = [
-        {"name": "NIFTY 50", "ticker": "^NSEI", "step": 50, "mult": 2},
-        {"name": "BANK NIFTY", "ticker": "^NSEBANK", "step": 100, "mult": 2},
+        {"name": "NIFTY 50", "ticker": "NIFTYBEES.NS", "step": 50, "mult": 2},
+        {"name": "BANK NIFTY", "ticker": "BANKBEES.NS", "step": 100, "mult": 2},
         {"name": "FINNIFTY", "ticker": "NIFTY_FIN_SERVICE.NS", "step": 50, "mult": 2},
         {"name": "SENSEX", "ticker": "^BSESN", "step": 100, "mult": 2}
     ]
