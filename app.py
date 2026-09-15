@@ -123,6 +123,8 @@ def get_data_and_signal(target_info, m_type):
     df['Bullish_FVG'] = (df['Low'] > df['High'].shift(2)) & (df['Close'].shift(1) > df['Open'].shift(1))
     df['Bearish_FVG'] = (df['High'] < df['Low'].shift(2)) & (df['Close'].shift(1) < df['Open'].shift(1))
 
+    return df
+
         latest = df.iloc[-1]
         prev_1 = df.iloc[-2]
         prev_2 = df.iloc[-3]
