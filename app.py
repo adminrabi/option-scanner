@@ -82,53 +82,46 @@ def get_data_and_signal(target_info, m_type):
     try:
         ticker_obj = yf.Ticker(ticker)
         df = ticker_obj.history(period="5d", interval="5m", auto_adjust=True)
-    except Exception:
-        return None
 
-    if df is None or df.empty or len(df) < 25:
-        return None
+        if df is None or df.empty or len(df) < 25:
+            return None
 
-    # ১. ইন্ডিকেটর ক্যালকুলেশন (Pure Pandas & NumPy)
-    df['EMA_9'] = df['Close'].ewm(span=9, adjust=False).mean()
-    df['EMA_21'] = df['Close'].ewm(span=21, adjust=False).mean()
+        # ১. ইন্ডিকেটর ক্যালকুলেশন (Pure Pandas & NumPy)
+        df['EMA_9'] = df['Close'].ewm(span=9, adjust=False).mean()
+        df['EMA_21'] = df['Close'].ewm(span=21, adjust=False).mean()
 
-    # RSI
-    delta = df['Close'].diff()
-    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-    rs = gain / (loss + 1e-10)
-    df['RSI'] = 100 - (100 / (1 + rs))
+        # RSI
+        delta = df['Close'].diff()
+        gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+        rs = gain / (loss + 1e-10)
+        df['RSI'] = 100 - (100 / (1 + rs))
 
-    # MACD
-    exp1 = df['Close'].ewm(span=12, adjust=False).mean()
-    exp2 = df['Close'].ewm(span=26, adjust=False).mean()
-    df['MACD'] = exp1 - exp2
-    df['MACD_Signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
+        # MACD
+        exp1 = df['Close'].ewm(span=12, adjust=False).mean()
+        exp2 = df['Close'].ewm(span=26, adjust=False).mean()
+        df['MACD'] = exp1 - exp2
+        df['MACD_Signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
 
-    # Stochastic Oscillator
-    low_min = df['Low'].rolling(window=14).min()
-    high_max = df['High'].rolling(window=14).max()
-    df['Stoch_K'] = 100 * ((df['Close'] - low_min) / ((high_max - low_min) + 1e-10))
-    df['Stoch_D'] = df['Stoch_K'].rolling(window=3).mean()
+        # Stochastic Oscillator
+        low_min = df['Low'].rolling(window=14).min()
+        high_max = df['High'].rolling(window=14).max()
+        df['Stoch_K'] = 100 * ((df['Close'] - low_min) / ((high_max - low_min) + 1e-10))
+        df['Stoch_D'] = df['Stoch_K'].rolling(window=3).mean()
 
-    # Volume SMA
-    df['Vol_SMA'] = df['Volume'].rolling(window=20).mean()
+        # Volume SMA
+        df['Vol_SMA'] = df['Volume'].rolling(window=20).mean()
 
-    # Supertrend
-    hl2 = (df['High'] + df['Low']) / 2
-    atr = (df['High'] - df['Low']).rolling(window=10).mean()
-    df['ST_Direction'] = np.where(df['Close'] > (hl2 - 3 * atr), 1, -1)
+        # Supertrend
+        hl2 = (df['High'] + df['Low']) / 2
+        atr = (df['High'] - df['Low']).rolling(window=10).mean()
+        df['ST_Direction'] = np.where(df['Close'] > (hl2 - 3 * atr), 1, -1)
 
-    # ২. FAIR VALUE GAP (FVG) ডিটেকশন (৩-ক্যান্ডেল প্যাটার্ন)
-    df['Bullish_FVG'] = (df['Low'] > df['High'].shift(2)) & (df['Close'].shift(1) > df['Open'].shift(1))
-    df['Bearish_FVG'] = (df['High'] < df['Low'].shift(2)) & (df['Close'].shift(1) < df['Open'].shift(1))
-
-    return df
+        # ২. FAIR VALUE GAP (FVG) ডিটেকশন
+        df['Bullish_FVG'] = (df['Low'] > df['High'].shift(2)) & (df['Close'].shift(1) > df['Open'].shift(1))
+        df['Bearish_FVG'] = (df['High'] < df['Low'].shift(2)) & (df['Close'].shift(1) < df['Open'].shift(1))
 
         latest = df.iloc[-1]
-        prev_1 = df.iloc[-2]
-        prev_2 = df.iloc[-3]
-        
         raw_price = latest['Close']
         candle_time = latest.name.strftime("%H:%M")
 
@@ -149,7 +142,6 @@ def get_data_and_signal(target_info, m_type):
         vol_ratio = round(latest['Volume'] / latest['Vol_SMA'], 2) if (pd.notna(latest['Vol_SMA']) and latest['Vol_SMA'] > 0) else 1.0
         high_vol = vol_ratio >= 1.2
 
-        # FVG জোনের উপস্থিতি ফিল্টার
         has_bull_fvg = df['Bullish_FVG'].tail(3).any()
         has_bear_fvg = df['Bearish_FVG'].tail(3).any()
 
@@ -187,11 +179,10 @@ def get_data_and_signal(target_info, m_type):
         target_pct_2 = 0.025 if mcx_type else 0.010
         sl_pct = 0.010 if mcx_type else 0.003
 
-        # HIGH ACCURACY OPTION BUYING DECISION ENGINE
         if bull_score >= 4 and is_green_candle and high_vol:
             if has_bull_fvg:
                 signal = "🚀 HIGH ACCURACY BUY CALL (CE)" if "Indices" in m_type else "🚀 STRONG BUY"
-                status_text = f"🔥 institutional FVG Breakout Detected! (Vol: {vol_ratio}x)"
+                status_text = f"🔥 Institutional FVG Breakout Detected! (Vol: {vol_ratio}x)"
             else:
                 signal = "📈 BUY CALL (CE)" if "Indices" in m_type else "BUY / BULLISH"
                 status_text = f"⚡ মোমেন্টাম ব্রেকআউট (Vol: {vol_ratio}x)"
@@ -275,7 +266,6 @@ for idx, item in enumerate(targets):
                 if data['option_suggestion']:
                     st.caption(data['option_suggestion'])
 
-            # মেমোরিতে কেবল হাই-কনফার্মেশন ট্রেড সেভ হবে
             asset_name = item['name']
             last_time = st.session_state.last_logged_time.get(asset_name, "")
             
@@ -302,7 +292,7 @@ for idx, item in enumerate(targets):
         else:
             st.error(f"⚠️ {item['name']} ডাটা পাওয়া যাচ্ছে না।")
 
-# 📜 মেমোরি টেবিল (পৃথক)
+# 📜 মেমোরি টেবিল
 st.markdown("---")
 if "Indices" in market_type:
     st.subheader("📜 NSE & BSE অপশন বায়িং সিগন্যাল মেমোরি")
