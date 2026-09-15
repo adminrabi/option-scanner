@@ -118,9 +118,10 @@ def get_data_and_signal(target_info, m_type):
     hl2 = (df['High'] + df['Low']) / 2
     atr = (df['High'] - df['Low']).rolling(window=10).mean()
     df['ST_Direction'] = np.where(df['Close'] > (hl2 - 3 * atr), 1, -1)
-        # ২. FAIR VALUE GAP (FVG) ডিটেকশন (৩-ক্যান্ডেল প্যাটার্ন)
-        df['Bullish_FVG'] = (df['Low'] > df['High'].shift(2)) & (df['Close'].shift(1) > df['Open'].shift(1))
-        df['Bearish_FVG'] = (df['High'] < df['Low'].shift(2)) & (df['Close'].shift(1) < df['Open'].shift(1))
+
+    # ২. FAIR VALUE GAP (FVG) ডিটেকশন (৩-ক্যান্ডেল প্যাটার্ন)
+    df['Bullish_FVG'] = (df['Low'] > df['High'].shift(2)) & (df['Close'].shift(1) > df['Open'].shift(1))
+    df['Bearish_FVG'] = (df['High'] < df['Low'].shift(2)) & (df['Close'].shift(1) < df['Open'].shift(1))
 
         latest = df.iloc[-1]
         prev_1 = df.iloc[-2]
