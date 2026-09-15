@@ -63,7 +63,7 @@ else:
 @st.cache_data(ttl=300)
 def get_usd_inr_rate():
     try:
-        usd_inr = yf.Ticker("USDINR=X").history(period="1d")['Close'].iloc[-1]
+        usd_inr = yf.Ticker("USDINR=X").history(period="5d")['Close'].iloc[-1]
         return usd_inr
     except:
         return 83.5
