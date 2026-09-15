@@ -2,4 +2,3 @@ streamlit
 yfinance
 pandas
 streamlit-autorefresh
-https://github.com/twopirllc/pandas-ta/archive/refs/heads/main.zip
