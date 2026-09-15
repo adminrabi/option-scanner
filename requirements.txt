@@ -1,5 +1,5 @@
 streamlit
 yfinance
 pandas
-ta
 streamlit-autorefresh
+https://github.com/twopirllc/pandas-ta/archive/refs/heads/main.zip
