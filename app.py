@@ -81,45 +81,43 @@ def get_data_and_signal(target_info, m_type):
 
     try:
         ticker_obj = yf.Ticker(ticker)
-        df = ticker_obj.history(period="5d", interval="5m")
-
-        if df is None or df.empty or len(df) < 25:
-            return None
-
-        # ১. ইন্ডিকেটর ক্যালকুলেশন (Pure Pandas & NumPy)
-        # EMA
-        df['EMA_9'] = df['Close'].ewm(span=9, adjust=False).mean()
-        df['EMA_21'] = df['Close'].ewm(span=21, adjust=False).mean()
-
-        # RSI
-        delta = df['Close'].diff()
-        gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-        loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-        rs = gain / loss
-        df['RSI'] = 100 - (100 / (1 + rs))
-
-        # MACD
-        exp1 = df['Close'].ewm(span=12, adjust=False).mean()
-        exp2 = df['Close'].ewm(span=26, adjust=False).mean()
-        df['MACD'] = exp1 - exp2
-        df['MACD_Signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
-
-        # Stochastic Oscillator
-        low_min = df['Low'].rolling(window=14).min()
-        high_max = df['High'].rolling(window=14).max()
-        df['Stoch_K'] = 100 * ((df['Close'] - low_min) / (high_max - low_min))
-        df['Stoch_D'] = df['Stoch_K'].rolling(window=3).mean()
-
-        # Volume SMA
-        df['Vol_SMA'] = df['Volume'].rolling(window=20).mean()
-
-        # Supertrend
-        hl2 = (df['High'] + df['Low']) / 2
-        atr = (df['High'] - df['Low']).rolling(window=10).mean()
-        df['ST_Direction'] = np.where(df['Close'] > (hl2 - 3 * atr), 1, -1)
-
-    except Exception as e:
+        df = ticker_obj.history(period="5d", interval="5m", auto_adjust=True)
+    except Exception:
         return None
+
+    if df is None or df.empty or len(df) < 25:
+        return None
+
+    # ১. ইন্ডিকেটর ক্যালকুলেশন (Pure Pandas & NumPy)
+    df['EMA_9'] = df['Close'].ewm(span=9, adjust=False).mean()
+    df['EMA_21'] = df['Close'].ewm(span=21, adjust=False).mean()
+
+    # RSI
+    delta = df['Close'].diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+    rs = gain / (loss + 1e-10)
+    df['RSI'] = 100 - (100 / (1 + rs))
+
+    # MACD
+    exp1 = df['Close'].ewm(span=12, adjust=False).mean()
+    exp2 = df['Close'].ewm(span=26, adjust=False).mean()
+    df['MACD'] = exp1 - exp2
+    df['MACD_Signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
+
+    # Stochastic Oscillator
+    low_min = df['Low'].rolling(window=14).min()
+    high_max = df['High'].rolling(window=14).max()
+    df['Stoch_K'] = 100 * ((df['Close'] - low_min) / ((high_max - low_min) + 1e-10))
+    df['Stoch_D'] = df['Stoch_K'].rolling(window=3).mean()
+
+    # Volume SMA
+    df['Vol_SMA'] = df['Volume'].rolling(window=20).mean()
+
+    # Supertrend
+    hl2 = (df['High'] + df['Low']) / 2
+    atr = (df['High'] - df['Low']).rolling(window=10).mean()
+    df['ST_Direction'] = np.where(df['Close'] > (hl2 - 3 * atr), 1, -1)
         # ২. FAIR VALUE GAP (FVG) ডিটেকশন (৩-ক্যান্ডেল প্যাটার্ন)
         df['Bullish_FVG'] = (df['Low'] > df['High'].shift(2)) & (df['Close'].shift(1) > df['Open'].shift(1))
         df['Bearish_FVG'] = (df['High'] < df['Low'].shift(2)) & (df['Close'].shift(1) < df['Open'].shift(1))
