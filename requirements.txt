@@ -3,4 +3,3 @@ yfinance
 pandas
 ta
 streamlit-autorefresh
-git+https://github.com/twopirllc/pandas-ta.git@development
