@@ -1,6 +1,7 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
+import numpy as np
 import datetime
 
 # ১. পেজ সেটআপ
@@ -85,23 +86,37 @@ def get_data_and_signal(target_info, m_type):
         if df is None or df.empty or len(df) < 25:
             return None
         
-        # ১. ইন্ডিকেটর ক্যালকুলেশন
-        df['EMA_9'] = ta.ema(df['Close'], length=9)
-        df['EMA_21'] = ta.ema(df['Close'], length=21)
-        df['RSI'] = ta.rsi(df['Close'], length=14)
-        
-        macd = ta.macd(df['Close'])
-        df['MACD'] = macd.iloc[:, 0] if (macd is not None and not macd.empty) else 0
-        df['MACD_Signal'] = macd.iloc[:, 2] if (macd is not None and not macd.empty) else 0
+# ১. ইন্ডিকেটর ক্যালকুলেশন (Pure Pandas & NumPy)
+# EMA
+df['EMA_9'] = df['Close'].ewm(span=9, adjust=False).mean()
+df['EMA_21'] = df['Close'].ewm(span=21, adjust=False).mean()
 
-        stoch = ta.stoch(df['High'], df['Low'], df['Close'], k=14, d=3)
-        df['Stoch_K'] = stoch.iloc[:, 0] if (stoch is not None and not stoch.empty) else 50
-        df['Stoch_D'] = stoch.iloc[:, 1] if (stoch is not None and not stoch.empty) else 50
+# RSI
+delta = df['Close'].diff()
+gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+rs = gain / loss
+df['RSI'] = 100 - (100 / (1 + rs))
 
-        df['Vol_SMA'] = ta.sma(df['Volume'], length=20)
-        supertrend = ta.supertrend(df['High'], df['Low'], df['Close'], length=10, multiplier=3.0)
-        df['ST_Direction'] = supertrend.iloc[:, 1] if (supertrend is not None and not supertrend.empty) else 0
+# MACD
+exp1 = df['Close'].ewm(span=12, adjust=False).mean()
+exp2 = df['Close'].ewm(span=26, adjust=False).mean()
+df['MACD'] = exp1 - exp2
+df['MACD_Signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
 
+# Stochastic Oscillator
+low_min = df['Low'].rolling(window=14).min()
+high_max = df['High'].rolling(window=14).max()
+df['Stoch_K'] = 100 * ((df['Close'] - low_min) / (high_max - low_min))
+df['Stoch_D'] = df['Stoch_K'].rolling(window=3).mean()
+
+# Volume SMA
+df['Vol_SMA'] = df['Volume'].rolling(window=20).mean()
+
+# Supertrend (Simplified Direction: 1 for Bullish, -1 for Bearish)
+hl2 = (df['High'] + df['Low']) / 2
+atr = (df['High'] - df['Low']).rolling(window=10).mean() # Standard ATR approximation
+df['ST_Direction'] = np.where(df['Close'] > (hl2 - 3 * atr), 1, -1)
         # ২. FAIR VALUE GAP (FVG) ডিটেকশন (৩-ক্যান্ডেল প্যাটার্ন)
         df['Bullish_FVG'] = (df['Low'] > df['High'].shift(2)) & (df['Close'].shift(1) > df['Open'].shift(1))
         df['Bearish_FVG'] = (df['High'] < df['Low'].shift(2)) & (df['Close'].shift(1) < df['Open'].shift(1))
