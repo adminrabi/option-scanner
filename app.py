@@ -3,6 +3,7 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 import datetime
+import pytz
 
 # ১. পেজ সেটআপ
 st.set_page_config(page_title="Institutional Option Buying Scanner", layout="wide")
@@ -14,7 +15,7 @@ try:
 except ImportError:
     HAS_AUTOREFRESH = False
 
-# ৩. মেমোরি হ্যান্ডলিং (NSE ও MCX আলাদা)
+# ৩. মেমোরি হ্যান্ডলিং
 if 'signal_history_nse' not in st.session_state:
     st.session_state.signal_history_nse = []
 if 'signal_history_mcx' not in st.session_state:
@@ -47,8 +48,8 @@ market_type = st.sidebar.radio(
 
 if market_type == "📊 NSE & BSE Indices":
     targets = [
-        {"name": "NIFTY 50", "ticker": "NIFTYBEES.NS", "step": 50, "mult": 2},
-        {"name": "BANK NIFTY", "ticker": "BANKBEES.NS", "step": 100, "mult": 2},
+        {"name": "NIFTY 50", "ticker": "^NSEI", "step": 50, "mult": 2},
+        {"name": "BANK NIFTY", "ticker": "^NSEBANK", "step": 100, "mult": 2},
         {"name": "FINNIFTY", "ticker": "NIFTY_FIN_SERVICE.NS", "step": 50, "mult": 2},
         {"name": "SENSEX", "ticker": "^BSESN", "step": 100, "mult": 2}
     ]
@@ -86,53 +87,53 @@ def get_data_and_signal(target_info, m_type):
         if df is None or df.empty or len(df) < 25:
             return None
 
-        # ১. ইন্ডিকেটর ক্যালকুলেশন (Pure Pandas & NumPy)
+        # ১. ইন্ডিকেটর ক্যালকুলেশন
         df['EMA_9'] = df['Close'].ewm(span=9, adjust=False).mean()
         df['EMA_21'] = df['Close'].ewm(span=21, adjust=False).mean()
 
-        # RSI
         delta = df['Close'].diff()
         gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
         rs = gain / (loss + 1e-10)
         df['RSI'] = 100 - (100 / (1 + rs))
 
-        # MACD
         exp1 = df['Close'].ewm(span=12, adjust=False).mean()
         exp2 = df['Close'].ewm(span=26, adjust=False).mean()
         df['MACD'] = exp1 - exp2
         df['MACD_Signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
 
-        # Stochastic Oscillator
         low_min = df['Low'].rolling(window=14).min()
         high_max = df['High'].rolling(window=14).max()
         df['Stoch_K'] = 100 * ((df['Close'] - low_min) / ((high_max - low_min) + 1e-10))
         df['Stoch_D'] = df['Stoch_K'].rolling(window=3).mean()
 
-        # Volume SMA
         df['Vol_SMA'] = df['Volume'].rolling(window=20).mean()
 
-        # Supertrend
         hl2 = (df['High'] + df['Low']) / 2
         atr = (df['High'] - df['Low']).rolling(window=10).mean()
         df['ST_Direction'] = np.where(df['Close'] > (hl2 - 3 * atr), 1, -1)
 
-        # ২. FAIR VALUE GAP (FVG) ডিটেকশন
+        # FVG ডিটেকশন
         df['Bullish_FVG'] = (df['Low'] > df['High'].shift(2)) & (df['Close'].shift(1) > df['Open'].shift(1))
         df['Bearish_FVG'] = (df['High'] < df['Low'].shift(2)) & (df['Close'].shift(1) < df['Open'].shift(1))
 
         latest = df.iloc[-1]
         raw_price = latest['Close']
-        candle_time = latest.name.strftime("%H:%M")
+        
+        # সময় IST-তে রূপান্তর
+        ist_tz = pytz.timezone('Asia/Kolkata')
+        if latest.name.tzinfo is None:
+            candle_time = latest.name.strftime("%H:%M")
+        else:
+            candle_time = latest.name.tz_convert(ist_tz).strftime("%H:%M")
 
-        TAX_DUTY_FACTOR = 1.18
-
-        if mcx_type in ["crude", "ng"]:
+        # প্রাইস কনভার্সন
+        if mcx_type == "crude" or mcx_type == "ng":
             price = round(raw_price * usd_inr_rate, 2)
         elif mcx_type == "gold":
-            price = round(((raw_price / 31.1035) * 10 * usd_inr_rate) * TAX_DUTY_FACTOR, 2)
+            price = round((raw_price / 31.1034768) * 10 * usd_inr_rate * 1.15, 2)
         elif mcx_type == "silver":
-            price = round(((raw_price / 31.1035) * 1000 * usd_inr_rate) * TAX_DUTY_FACTOR, 2)
+            price = round((raw_price / 31.1034768) * 1000 * usd_inr_rate * 1.15, 2)
         else:
             price = round(raw_price, 2)
 
@@ -140,18 +141,21 @@ def get_data_and_signal(target_info, m_type):
         stoch_k = round(latest['Stoch_K'], 2) if pd.notna(latest['Stoch_K']) else 50.0
         
         vol_ratio = round(latest['Volume'] / latest['Vol_SMA'], 2) if (pd.notna(latest['Vol_SMA']) and latest['Vol_SMA'] > 0) else 1.0
-        high_vol = vol_ratio >= 1.2
+        
+        # ভলিউম ফিল্টার (ইন্ডেক্সের ক্ষেত্রে ডাটা লিমিটেশনের কারণে ডিফল্ট সত্য ধরা ভালো)
+        high_vol = vol_ratio >= 1.0 if "Indices" in m_type else vol_ratio >= 1.2
 
         has_bull_fvg = df['Bullish_FVG'].tail(3).any()
         has_bear_fvg = df['Bearish_FVG'].tail(3).any()
 
         bull_score, bear_score = 0, 0
 
+        # বুলিশ এবং বিয়ারিশ স্কোয়ারিং লজিক
         if latest['EMA_9'] > latest['EMA_21']: bull_score += 1
         else: bear_score += 1
 
-        if rsi >= 55: bull_score += 1
-        elif rsi <= 45: bear_score += 1
+        if rsi >= 52: bull_score += 1
+        elif rsi <= 48: bear_score += 1
 
         if latest['ST_Direction'] > 0: bull_score += 1
         elif latest['ST_Direction'] < 0: bear_score += 1
@@ -179,6 +183,7 @@ def get_data_and_signal(target_info, m_type):
         target_pct_2 = 0.025 if mcx_type else 0.010
         sl_pct = 0.010 if mcx_type else 0.003
 
+        # 🟢 BULLISH SIGNAL LOGIC (BUY CE)
         if bull_score >= 4 and is_green_candle and high_vol:
             if has_bull_fvg:
                 signal = "🚀 HIGH ACCURACY BUY CALL (CE)" if "Indices" in m_type else "🚀 STRONG BUY"
@@ -195,6 +200,7 @@ def get_data_and_signal(target_info, m_type):
             if "Indices" in m_type:
                 option_suggestion = f"💡 **Recommended Strike:** ITM {itm_ce} CE | ATM {atm_strike} CE"
 
+        # 🔴 BEARISH SIGNAL LOGIC (BUY PE)
         elif bear_score >= 4 and is_red_candle and high_vol:
             if has_bear_fvg:
                 signal = "🔻 HIGH ACCURACY BUY PUT (PE)" if "Indices" in m_type else "🔻 STRONG SELL"
@@ -236,7 +242,7 @@ def get_data_and_signal(target_info, m_type):
         return None
 
 # ==========================================
-# 🖥️ DASHBOARD DISPLAY (এক লাইনে ৪টি কলাম)
+# 🖥️ DASHBOARD DISPLAY
 # ==========================================
 cols = st.columns(len(targets))
 
@@ -270,7 +276,7 @@ for idx, item in enumerate(targets):
             last_time = st.session_state.last_logged_time.get(asset_name, "")
             
             if is_confirmed_signal and data['candle_time'] != last_time:
-                timestamp = datetime.datetime.now().strftime("%I:%M:%S %p")
+                timestamp = datetime.datetime.now(pytz.timezone('Asia/Kolkata')).strftime("%I:%M:%S %p")
                 log_entry = {
                     "সময়": timestamp,
                     "এসেট": asset_name,
