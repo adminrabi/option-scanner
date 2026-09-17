@@ -84,7 +84,7 @@ def get_data_and_signal(target_info, m_type):
         ticker_obj = yf.Ticker(ticker)
         df = ticker_obj.history(period="5d", interval="5m", auto_adjust=True)
 
-        if df is None or df.empty or len(df) < 25:
+        if df is None or df.empty or len(df) < 35:
             return None
 
         # ১. ইন্ডিকেটর ক্যালকুলেশন
@@ -107,6 +107,10 @@ def get_data_and_signal(target_info, m_type):
         df['Stoch_K'] = 100 * ((df['Close'] - low_min) / ((high_max - low_min) + 1e-10))
         df['Stoch_D'] = df['Stoch_K'].rolling(window=3).mean()
 
+        # Awesome Oscillator (AO) ক্যালকুলেশন
+        median_price = (df['High'] + df['Low']) / 2
+        df['AO'] = median_price.rolling(window=5).mean() - median_price.rolling(window=34).mean()
+
         df['Vol_SMA'] = df['Volume'].rolling(window=20).mean()
 
         hl2 = (df['High'] + df['Low']) / 2
@@ -120,20 +124,22 @@ def get_data_and_signal(target_info, m_type):
         latest = df.iloc[-1]
         raw_price = latest['Close']
         
-        # সময় IST-তে রূপান্তর
+        # ভারতীয় সময়ে (IST) টাইমিং পরিবর্তন
         ist_tz = pytz.timezone('Asia/Kolkata')
         if latest.name.tzinfo is None:
             candle_time = latest.name.strftime("%H:%M")
         else:
             candle_time = latest.name.tz_convert(ist_tz).strftime("%H:%M")
 
-        # প্রাইস কনভার্সন
+        # MCX রিয়েল-টাইম রেট এডজাস্টমেন্ট
         if mcx_type == "crude" or mcx_type == "ng":
             price = round(raw_price * usd_inr_rate, 2)
         elif mcx_type == "gold":
-            price = round((raw_price / 31.1034768) * 10 * usd_inr_rate * 1.15, 2)
+            # Gold: ৩০০০ টাকা কমানোর জন্য নতুন ফ্যাক্টর (1.065)
+            price = round((raw_price / 31.1034768) * 10 * usd_inr_rate * 1.065, 2)
         elif mcx_type == "silver":
-            price = round((raw_price / 31.1034768) * 1000 * usd_inr_rate * 1.15, 2)
+            # Silver: ৩০০০ টাকা বাড়ানোর জন্য নতুন ফ্যাক্টর (1.160)
+            price = round((raw_price / 31.1034768) * 1000 * usd_inr_rate * 1.160, 2)
         else:
             price = round(raw_price, 2)
 
@@ -141,8 +147,6 @@ def get_data_and_signal(target_info, m_type):
         stoch_k = round(latest['Stoch_K'], 2) if pd.notna(latest['Stoch_K']) else 50.0
         
         vol_ratio = round(latest['Volume'] / latest['Vol_SMA'], 2) if (pd.notna(latest['Vol_SMA']) and latest['Vol_SMA'] > 0) else 1.0
-        
-        # ভলিউম ফিল্টার (ইন্ডেক্সের ক্ষেত্রে ডাটা লিমিটেশনের কারণে ডিফল্ট সত্য ধরা ভালো)
         high_vol = vol_ratio >= 1.0 if "Indices" in m_type else vol_ratio >= 1.2
 
         has_bull_fvg = df['Bullish_FVG'].tail(3).any()
@@ -150,7 +154,7 @@ def get_data_and_signal(target_info, m_type):
 
         bull_score, bear_score = 0, 0
 
-        # বুলিশ এবং বিয়ারিশ স্কোয়ারিং লজিক
+        # ৬টি ফ্যাক্টরের ওপর ভিত্তি করে মাল্টি-স্কোরিং লজিক
         if latest['EMA_9'] > latest['EMA_21']: bull_score += 1
         else: bear_score += 1
 
@@ -164,6 +168,10 @@ def get_data_and_signal(target_info, m_type):
         else: bear_score += 1
 
         if stoch_k > latest['Stoch_D']: bull_score += 1
+        else: bear_score += 1
+
+        # Awesome Oscillator (AO) ফিল্টার
+        if latest['AO'] > 0: bull_score += 1
         else: bear_score += 1
 
         is_green_candle = latest['Close'] > latest['Open']
@@ -183,7 +191,7 @@ def get_data_and_signal(target_info, m_type):
         target_pct_2 = 0.025 if mcx_type else 0.010
         sl_pct = 0.010 if mcx_type else 0.003
 
-        # 🟢 BULLISH SIGNAL LOGIC (BUY CE)
+        # 🟢 BULLISH SIGNAL LOGIC (BUY CE) - ৬টির মধ্যে অন্তত ৪টি ফিল্টার ম্যাচ হতে হবে
         if bull_score >= 4 and is_green_candle and high_vol:
             if has_bull_fvg:
                 signal = "🚀 HIGH ACCURACY BUY CALL (CE)" if "Indices" in m_type else "🚀 STRONG BUY"
@@ -200,7 +208,7 @@ def get_data_and_signal(target_info, m_type):
             if "Indices" in m_type:
                 option_suggestion = f"💡 **Recommended Strike:** ITM {itm_ce} CE | ATM {atm_strike} CE"
 
-        # 🔴 BEARISH SIGNAL LOGIC (BUY PE)
+        # 🔴 BEARISH SIGNAL LOGIC (BUY PE) - ৬টির মধ্যে অন্তত ৪টি ফিল্টার ম্যাচ হতে হবে
         elif bear_score >= 4 and is_red_candle and high_vol:
             if has_bear_fvg:
                 signal = "🔻 HIGH ACCURACY BUY PUT (PE)" if "Indices" in m_type else "🔻 STRONG SELL"
