@@ -136,10 +136,10 @@ def get_data_and_signal(target_info, m_type):
             price = round(raw_price * usd_inr_rate, 2)
         elif mcx_type == "gold":
             # Gold: ৩০০০ টাকা কমানোর জন্য নতুন ফ্যাক্টর (1.065)
-            price = round((raw_price / 31.1034768) * 10 * usd_inr_rate * 1.065, 2)
+            price = round((raw_price / 31.1034768) * 10 * usd_inr_rate * 1.085, 2)
         elif mcx_type == "silver":
             # Silver: ৩০০০ টাকা বাড়ানোর জন্য নতুন ফ্যাক্টর (1.160)
-            price = round((raw_price / 31.1034768) * 1000 * usd_inr_rate * 1.160, 2)
+            price = round((raw_price / 31.1034768) * 1000 * usd_inr_rate * 1.180, 2)
         else:
             price = round(raw_price, 2)
 
