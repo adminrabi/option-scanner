@@ -71,7 +71,7 @@ else:
 @st.cache_data(ttl=300)
 def get_usd_inr_rate():
     try:
-        usd_inr = yf.Ticker("USDINR=X").history(period="5d")['Close'].iloc[-1]
+        usd_inr = yf.Ticker("USDINR=X").history(period="3d")['Close'].iloc[-1]
         return usd_inr
     except:
         return 83.5
@@ -79,7 +79,7 @@ def get_usd_inr_rate():
 usd_inr_rate = get_usd_inr_rate()
 
 # ===================================================
-# 🧠 INSTITUTIONAL ALGORITHM ENGINE (STRICT 5/6 FILTER)
+# 🧠 INSTITUTIONAL ALGORITHM ENGINE
 # ===================================================
 def get_data_and_signal(target_info, m_type, tf):
     ticker = target_info['ticker']
@@ -89,9 +89,11 @@ def get_data_and_signal(target_info, m_type, tf):
 
     try:
         ticker_obj = yf.Ticker(ticker)
-        df = ticker_obj.history(period="5d", interval=tf, auto_adjust=True)
+        # ৩ মিনিটের ডাটা স্পিড বাড়াতে period 3d করা হলো
+        fetch_period = "3d" if tf == "3m" else "5d"
+        df = ticker_obj.history(period=fetch_period, interval=tf, auto_adjust=True)
 
-        if df is None or df.empty or len(df) < 35:
+        if df is None or df.empty or len(df) < 30:
             return None
 
         # ১. ইন্ডিকেটর ক্যালকুলেশন
@@ -114,7 +116,7 @@ def get_data_and_signal(target_info, m_type, tf):
         df['Stoch_K'] = 100 * ((df['Close'] - low_min) / ((high_max - low_min) + 1e-10))
         df['Stoch_D'] = df['Stoch_K'].rolling(window=3).mean()
 
-        # Awesome Oscillator (AO) ক্যালকুলেশন
+        # Awesome Oscillator (AO)
         median_price = (df['High'] + df['Low']) / 2
         df['AO'] = median_price.rolling(window=5).mean() - median_price.rolling(window=34).mean()
 
@@ -153,8 +155,9 @@ def get_data_and_signal(target_info, m_type, tf):
         
         vol_ratio = round(latest['Volume'] / latest['Vol_SMA'], 2) if (pd.notna(latest['Vol_SMA']) and latest['Vol_SMA'] > 0) else 1.0
         
-        # কড়া ভলিউম ব্রেকআউট শর্ত (১.৩x+)
-        high_vol = vol_ratio >= 1.3
+        # ভলিউম ফিল্টার: ইনডেক্সের জন্য ১.১x, কমোডিটির জন্য ১.৩x
+        min_vol_req = 1.1 if "Indices" in m_type else 1.3
+        high_vol = vol_ratio >= min_vol_req
 
         has_bull_fvg = df['Bullish_FVG'].tail(3).any()
         has_bear_fvg = df['Bearish_FVG'].tail(3).any()
@@ -165,8 +168,8 @@ def get_data_and_signal(target_info, m_type, tf):
         if latest['EMA_9'] > latest['EMA_21']: bull_score += 1
         else: bear_score += 1
 
-        if rsi >= 53: bull_score += 1
-        elif rsi <= 47: bear_score += 1
+        if rsi >= 52: bull_score += 1
+        elif rsi <= 48: bear_score += 1
 
         if latest['ST_Direction'] > 0: bull_score += 1
         elif latest['ST_Direction'] < 0: bear_score += 1
@@ -180,9 +183,12 @@ def get_data_and_signal(target_info, m_type, tf):
         if latest['AO'] > 0: bull_score += 1
         else: bear_score += 1
 
-        # ক্যান্ডেলের রঙ নিশ্চিত করা
+        # ক্যান্ডেলের রঙ
         is_green_candle = latest['Close'] > latest['Open']
         is_red_candle = latest['Close'] < latest['Open']
+
+        # মার্কেট অনুযায়ী থ্রেশহোল্ড সেট: ইনডেক্স = ৪/৬, কমোডিটি = ৫/৬
+        required_score = 4 if "Indices" in m_type else 5
 
         atm_strike = int(round(price / strike_step) * strike_step)
         itm_ce = atm_strike - (strike_step * multiplier)
@@ -198,8 +204,8 @@ def get_data_and_signal(target_info, m_type, tf):
         target_pct_2 = 0.025 if mcx_type else 0.010
         sl_pct = 0.010 if mcx_type else 0.003
 
-        # 🟢 STRICT BULLISH SIGNAL LOGIC (৫/৬ স্কোর + সবুজ ক্যান্ডেল বাধ্যতামূলক)
-        if bull_score >= 5 and is_green_candle and high_vol:
+        # 🟢 BULLISH SIGNAL LOGIC
+        if bull_score >= required_score and is_green_candle and high_vol:
             if has_bull_fvg:
                 signal = "🚀 HIGH ACCURACY BUY CALL (CE)" if "Indices" in m_type else "🚀 STRONG BUY"
                 status_text = f"🔥 Institutional FVG Breakout! (Vol: {vol_ratio}x)"
@@ -215,8 +221,8 @@ def get_data_and_signal(target_info, m_type, tf):
             if "Indices" in m_type:
                 option_suggestion = f"💡 **Recommended Strike:** ITM {itm_ce} CE | ATM {atm_strike} CE"
 
-        # 🔴 STRICT BEARISH SIGNAL LOGIC (৫/৬ স্কোর + লাল ক্যান্ডেল বাধ্যতামূলক)
-        elif bear_score >= 5 and is_red_candle and high_vol:
+        # 🔴 BEARISH SIGNAL LOGIC
+        elif bear_score >= required_score and is_red_candle and high_vol:
             if has_bear_fvg:
                 signal = "🔻 HIGH ACCURACY BUY PUT (PE)" if "Indices" in m_type else "🔻 STRONG SELL"
                 status_text = f"🔥 Institutional FVG Breakdown! (Vol: {vol_ratio}x)"
@@ -234,7 +240,7 @@ def get_data_and_signal(target_info, m_type, tf):
 
         elif bull_score >= 3 or bear_score >= 3:
             signal = "WAIT & WATCH"
-            status_text = "⚠️ মোমেন্টাম প্রসেস হচ্ছে (Time Decay-র ঝুঁকি)"
+            status_text = "⚠️ মোমেন্টাম ফিল্টার হচ্ছে (Time Decay-র ঝুঁকি)"
             color = "orange"
 
         return {
