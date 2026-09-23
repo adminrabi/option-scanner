@@ -176,7 +176,7 @@ def get_data_and_signal(target_info, m_type, tf):
                 option_suggestion = f"💡 **Recommended Strike:** ITM {itm_ce} CE | ATM {atm_strike} CE"
 
         # Strong Bearish Trend/Breakout Signal
-        elif bear_score >= 3 and is_red_candle:
+        elif bear_score >= 4 and is_red_candle:
             signal = "🔻 STRONG BUY PUT (PE)" if "Indices" in m_type else "🔻 STRONG BEARISH BREAKDOWN"
             status_text = f"🔥 পারফেক্ট ব্রেকডাউন ট্রেড ধরা পড়েছে! ({candle_time})"
             color = "red"
