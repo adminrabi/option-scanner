@@ -6,7 +6,7 @@ import datetime
 import pytz
 
 # ১. পেজ কনফিগারেশন
-st.set_page_config(page_title="Institutional Option & Commodity Scanner", layout="wide")
+st.set_page_config(page_title="High Accuracy Institutional Scanner", layout="wide")
 
 # ২. অটো রিফ্রেশ
 try:
@@ -23,7 +23,7 @@ if 'signal_history_mcx' not in st.session_state:
 if 'last_logged_time' not in st.session_state:
     st.session_state.last_logged_time = {}
 
-st.title("🎯 Perfect Institutional Breakout & Trend Scanner")
+st.title("🎯 Strict High-Accuracy Breakout Scanner")
 
 # ==========================================
 # ⚙️ SIDEBAR CONFIGURATION
@@ -68,7 +68,7 @@ else:
     ]
 
 # ===================================================
-# 🧠 PERFECT BREAKOUT DETECTION ALGORITHM
+# 🧠 STRICT ACCURACY BREAKOUT ALGORITHM
 # ===================================================
 def get_data_and_signal(target_info, m_type, tf):
     ticker = target_info['ticker']
@@ -112,9 +112,11 @@ def get_data_and_signal(target_info, m_type, tf):
         df['MACD'] = exp1 - exp2
         df['MACD_Signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
 
-        # ৩ ক্যান্ডেলের ব্রেকআউট লজিক (৬:৫৪ এর মতো বড় ট্রেস করার জন্য)
-        df['Prev_High_3'] = df['High'].shift(1).rolling(3).max()
-        df['Prev_Low_3'] = df['Low'].shift(1).rolling(3).min()
+        df['Vol_SMA'] = df['Volume'].rolling(window=10).mean()
+
+        # ৫টি ক্যান্ডেলের স্ট্রং ব্রেকআউট লেভেল
+        df['Prev_High_5'] = df['High'].shift(1).rolling(5).max()
+        df['Prev_Low_5'] = df['Low'].shift(1).rolling(5).min()
 
         latest = df.iloc[-1]
         price = round(latest['Close'], 2)
@@ -126,24 +128,26 @@ def get_data_and_signal(target_info, m_type, tf):
             candle_time = latest.name.tz_convert(ist_tz).strftime("%H:%M")
 
         rsi = round(latest['RSI'], 2) if pd.notna(latest['RSI']) else 50.0
+        vol_ratio = round(latest['Volume'] / latest['Vol_SMA'], 2) if (pd.notna(latest['Vol_SMA']) and latest['Vol_SMA'] > 0) else 1.0
 
-        # ব্রেকআউট কন্ডিশন
-        is_breakout_up = price > latest['Prev_High_3']
-        is_breakout_down = price < latest['Prev_Low_3']
+        # কড়া শর্তসমূহ:
+        is_high_volume = vol_ratio >= 1.15  # ভলিউম অন্তত ১৫% বেশি হতে হবে
+        is_breakout_up = price > latest['Prev_High_5']
+        is_breakout_down = price < latest['Prev_Low_5']
 
-        # স্কোরিং
+        # কড়া স্কোরিং (Required Score = 4)
         bull_score, bear_score = 0, 0
 
         if latest['EMA_9'] > latest['EMA_21']: bull_score += 1
         else: bear_score += 1
 
-        if rsi >= 52: bull_score += 1
-        elif rsi <= 48: bear_score += 1
+        if rsi >= 55: bull_score += 1
+        elif rsi <= 45: bear_score += 1
 
         if latest['MACD'] > latest['MACD_Signal']: bull_score += 1
         else: bear_score += 1
 
-        if is_breakout_up: bull_score += 2  # ব্রেকআউট হলে এক্সট্রা পয়েন্ট
+        if is_breakout_up: bull_score += 2
         if is_breakout_down: bear_score += 2
 
         is_green_candle = latest['Close'] > latest['Open']
@@ -156,17 +160,17 @@ def get_data_and_signal(target_info, m_type, tf):
         sl, target1, target2 = 0.0, 0.0, 0.0
         option_suggestion = ""
         signal = "NEUTRAL"
-        status_text = "⚪ মার্কেট কন্সোলিডেশন / কোনো ব্রেকআউট নেই"
+        status_text = "⚪ মার্কেট শান্ত / কন্সোলিডেশন"
         color = "gray"
 
         target_pct_1 = 0.005
         target_pct_2 = 0.010
         sl_pct = 0.004
 
-        # Strong Bullish Trend/Breakout Signal
-        if bull_score >= 3 and is_green_candle:
-            signal = "🚀 STRONG BUY CALL (CE)" if "Indices" in m_type else "🚀 STRONG BULLISH BREAKOUT"
-            status_text = f"🔥 পারফেক্ট ব্রেকআউট ট্রেড ধরা পড়েছে! ({candle_time})"
+        # 🎯 কেবল কড়া শর্তের পরেই স্ট্রং সিগন্যাল আসবে
+        if bull_score >= 4 and is_green_candle and is_high_volume:
+            signal = "🚀 STRONG BUY CALL (CE)" if "Indices" in m_type else "🚀 CONFIRMED BULLISH BREAKOUT"
+            status_text = f"🔥 কনফার্মড ভলিউম ব্রেকআউট! (Vol: {vol_ratio}x)"
             color = "green"
             sl = round(price * (1 - sl_pct), 2)
             target1 = round(price * (1 + target_pct_1), 2)
@@ -175,10 +179,9 @@ def get_data_and_signal(target_info, m_type, tf):
             if "Indices" in m_type:
                 option_suggestion = f"💡 **Recommended Strike:** ITM {itm_ce} CE | ATM {atm_strike} CE"
 
-        # Strong Bearish Trend/Breakout Signal
-        elif bear_score >= 4 and is_red_candle:
-            signal = "🔻 STRONG BUY PUT (PE)" if "Indices" in m_type else "🔻 STRONG BEARISH BREAKDOWN"
-            status_text = f"🔥 পারফেক্ট ব্রেকডাউন ট্রেড ধরা পড়েছে! ({candle_time})"
+        elif bear_score >= 4 and is_red_candle and is_high_volume:
+            signal = "🔻 STRONG BUY PUT (PE)" if "Indices" in m_type else "🔻 CONFIRMED BEARISH BREAKDOWN"
+            status_text = f"🔥 কনফার্মড ভলিউম ব্রেকডাউন! (Vol: {vol_ratio}x)"
             color = "red"
             sl = round(price * (1 + sl_pct), 2)
             target1 = round(price * (1 - target_pct_1), 2)
@@ -189,12 +192,13 @@ def get_data_and_signal(target_info, m_type, tf):
 
         elif bull_score >= 2 or bear_score >= 2:
             signal = "WAIT & WATCH"
-            status_text = "⚠️ মোমেন্টাম তৈরি হচ্ছে..."
+            status_text = "⚠️ মার্কেট পর্যবেক্ষণ করা হচ্ছে (অপেক্ষা করুন)"
             color = "orange"
 
         return {
             'price': price,
             'rsi': rsi,
+            'vol_ratio': vol_ratio,
             'signal': signal,
             'status_text': status_text,
             'color': color,
@@ -224,7 +228,7 @@ for idx, item in enumerate(targets):
 
             st.metric("স্পট প্রাইস", f"₹{data['price']}" if "Indices" in market_type else f"${data['price']}")
 
-            st.write(f"**RSI:** {data['rsi']} | **Time:** {data['candle_time']}")
+            st.write(f"**RSI:** {data['rsi']} | **Vol Ratio:** {data['vol_ratio']}x | **Time:** {data['candle_time']}")
 
             is_confirmed_signal = data['color'] in ['green', 'red']
 
