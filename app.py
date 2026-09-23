@@ -148,7 +148,7 @@ def get_data_and_signal(target_info, m_type, tf):
         vol_ratio = round(latest['Volume'] / latest['Vol_SMA'], 2) if (pd.notna(latest['Vol_SMA']) and latest['Vol_SMA'] > 0) else 1.0
         
         # 🎯 দ্রুত সিগন্যালের জন্য নতুন অপ্টিমাইজড ফিল্টার
-        high_vol = vol_ratio >= 0.91  # অত্যন্ত সাধারণ ভলিউম সাপোর্ট থাকলেই সিগন্যাল দেবে
+        high_vol = vol_ratio >= 0.97  # অত্যন্ত সাধারণ ভলিউম সাপোর্ট থাকলেই সিগন্যাল দেবে
         required_score = 3             # ৬টির মধ্যে ৩টি শর্ত মিললেই স্ক্যালপিং সিগন্যাল ট্রিগার হবে
 
         has_bull_fvg = df['Bullish_FVG'].tail(2).any()
