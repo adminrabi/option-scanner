@@ -201,7 +201,7 @@ def get_data_and_signal(target_info, m_type, tf):
         target_pct_2 = 0.010
         sl_pct = 0.004
 
-        # সিগন্যাল ট্রিগার (Strict Threshold = 3.75)
+        # সিগন্যাল ট্রিগার (Strict Threshold = 3.85)
         if bull_score >= 3.85 and is_green_candle:
             signal = "🚀 STRONG BUY CALL (CE)" if "Indices" in m_type else "🚀 CONFIRMED BULLISH BREAKOUT"
             status_text = f"🔥 কনফার্মড ট্রেন্ড ব্রেকআউট! ({candle_time})"
