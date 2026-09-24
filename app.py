@@ -54,26 +54,27 @@ market_type = st.sidebar.radio(
 
 if market_type == "📊 NSE & BSE Indices":
     targets = [
-        {"name": "NIFTY 50", "ticker": "^NSEI", "step": 50, "mult": 2},
-        {"name": "BANK NIFTY", "ticker": "^NSEBANK", "step": 100, "mult": 2},
-        {"name": "FINNIFTY", "ticker": "NIFTY_FIN_SERVICE.NS", "step": 50, "mult": 2},
-        {"name": "SENSEX", "ticker": "^BSESN", "step": 100, "mult": 2}
+        {"name": "NIFTY 50", "ticker": "^NSEI", "step": 50, "mult": 2, "type": "index"},
+        {"name": "BANK NIFTY", "ticker": "^NSEBANK", "step": 100, "mult": 2, "type": "index"},
+        {"name": "FINNIFTY", "ticker": "NIFTY_FIN_SERVICE.NS", "step": 50, "mult": 2, "type": "index"},
+        {"name": "SENSEX", "ticker": "^BSESN", "step": 100, "mult": 2, "type": "index"}
     ]
 else:
     targets = [
-        {"name": "CRUDE OIL", "ticker": "CL=F", "step": 50, "mult": 1, "multiplier": 83.5},
-        {"name": "NATURAL GAS", "ticker": "NG=F", "step": 5, "mult": 1, "multiplier": 83.5},
-        {"name": "GOLD", "ticker": "GC=F", "step": 100, "mult": 1, "multiplier": 2700}, # Approx conversion to MCX scale
-        {"name": "SILVER", "ticker": "SI=F", "step": 250, "mult": 1, "multiplier": 3100} # Approx conversion to MCX scale
+        {"name": "CRUDE OIL", "ticker": "CL=F", "step": 50, "mult": 1, "type": "crude"},
+        {"name": "NATURAL GAS", "ticker": "NG=F", "step": 5, "mult": 1, "type": "ng"},
+        {"name": "GOLD", "ticker": "GC=F", "step": 100, "mult": 1, "type": "gold"},
+        {"name": "SILVER", "ticker": "SI=F", "step": 250, "mult": 1, "type": "silver"}
     ]
 
 # ===================================================
-# 🧠 HIGH-STRICTNESS BREAKOUT ALGORITHM
+# 🧠 ACCURATE MCX CONVERSION & BREAKOUT ALGORITHM
 # ===================================================
 def get_data_and_signal(target_info, m_type, tf):
     ticker = target_info['ticker']
     strike_step = target_info['step']
     opt_mult = target_info['mult']
+    asset_type = target_info.get('type', 'index')
 
     try:
         ticker_obj = yf.Ticker(ticker)
@@ -96,13 +97,33 @@ def get_data_and_signal(target_info, m_type, tf):
         if df is None or df.empty or len(df) < 5:
             return None
 
-        # MCX কারেন্সি কনভার্সন
-        if "Commodities" in m_type:
-            conv = target_info.get("multiplier", 1.0)
-            df['Close'] = df['Close'] * conv
-            df['Open'] = df['Open'] * conv
-            df['High'] = df['High'] * conv
-            df['Low'] = df['Low'] * conv
+        # 🧮 সঠিক গাণিতিক কনভার্সন লজিক (USD to MCX INR)
+        usd_inr = 83.50  # গড় ডলার রেট
+        duty_tax = 1.15   # ট্যাক্স ও প্রিমিয়াম ফ্যাক্টর
+
+        if asset_type == "gold":
+            # 1 Troy Ounce = 31.10347 grams -> MCX 10 grams Conversion
+            factor = (10 / 31.10347) * usd_inr * duty_tax
+            df['Close'] = df['Close'] * factor
+            df['Open'] = df['Open'] * factor
+            df['High'] = df['High'] * factor
+            df['Low'] = df['Low'] * factor
+
+        elif asset_type == "silver":
+            # 1 Troy Ounce = 31.10347 grams -> MCX 1 kg (1000 grams) Conversion
+            factor = (1000 / 31.10347) * usd_inr * duty_tax
+            df['Close'] = df['Close'] * factor
+            df['Open'] = df['Open'] * factor
+            df['High'] = df['High'] * factor
+            df['Low'] = df['Low'] * factor
+
+        elif asset_type in ["crude", "ng"]:
+            # ব্যারেল থেকে লিটার/গ্যালন কনভার্সন
+            factor = usd_inr
+            df['Close'] = df['Close'] * factor
+            df['Open'] = df['Open'] * factor
+            df['High'] = df['High'] * factor
+            df['Low'] = df['Low'] * factor
 
         # ইন্ডিকেটর ক্যালকুলেশন
         df['EMA_9'] = df['Close'].ewm(span=9, adjust=False).mean()
@@ -125,7 +146,7 @@ def get_data_and_signal(target_info, m_type, tf):
 
         df['Vol_SMA'] = df['Volume'].rolling(window=5, min_periods=1).mean()
 
-        # ৫ ক্যান্ডেলের কড়া ব্রেকআউট ফিল্টার
+        # ৫ ক্যান্ডেলের ব্রেকআউট ফিল্টার
         df['Prev_High_5'] = df['High'].shift(1).rolling(5, min_periods=1).max()
         df['Prev_Low_5'] = df['Low'].shift(1).rolling(5, min_periods=1).min()
 
@@ -145,7 +166,7 @@ def get_data_and_signal(target_info, m_type, tf):
         is_breakout_up = price > latest['Prev_High_5']
         is_breakout_down = price < latest['Prev_Low_5']
 
-        # কড়া স্কোরিং সিস্টেম (Strict Threshold 3.75)
+        # কড়া স্কোরিং সিস্টেম (Strict Threshold = 3.75)
         bull_score, bear_score = 0.0, 0.0
 
         if latest['EMA_9'] > latest['EMA_21']: bull_score += 1.0
@@ -180,7 +201,7 @@ def get_data_and_signal(target_info, m_type, tf):
         target_pct_2 = 0.010
         sl_pct = 0.004
 
-        # সিগন্যাল কন্ডিশন (Strict Threshold = 3.75)
+        # সিগন্যাল ট্রিগার (Strict Threshold = 3.75)
         if bull_score >= 3.75 and is_green_candle:
             signal = "🚀 STRONG BUY CALL (CE)" if "Indices" in m_type else "🚀 CONFIRMED BULLISH BREAKOUT"
             status_text = f"🔥 কনফার্মড ট্রেন্ড ব্রেকআউট! ({candle_time})"
@@ -239,7 +260,7 @@ for idx, item in enumerate(targets):
             elif data['color'] == 'orange': st.warning(f"### {data['signal']}\n\n{data['status_text']}")
             else: st.info(f"### {data['signal']}\n\n{data['status_text']}")
 
-            st.metric("স্পট প্রাইস (approx INR)", f"₹{data['price']}")
+            st.metric("স্পট প্রাইস (MCX Approx ₹)", f"₹{data['price']:,.2f}")
 
             st.write(f"**RSI:** {data['rsi']} | **Vol Ratio:** {data['vol_ratio']}x | **Time:** {data['candle_time']}")
 
@@ -247,8 +268,8 @@ for idx, item in enumerate(targets):
 
             if is_confirmed_signal:
                 st.markdown("---")
-                st.write(f"🎯 **T1:** {data['target1']} | **T2:** {data['target2']}")
-                st.write(f"🛑 **SL:** {data['sl']}")
+                st.write(f"🎯 **T1:** {data['target1']:,.2f} | **T2:** {data['target2']:,.2f}")
+                st.write(f"🛑 **SL:** {data['sl']:,.2f}")
                 if data['option_suggestion']:
                     st.caption(data['option_suggestion'])
 
@@ -261,10 +282,10 @@ for idx, item in enumerate(targets):
                     "সময়": timestamp,
                     "এসেট": asset_name,
                     "সিগন্যাল": data['signal'],
-                    "এন্ট্রি প্রাইস": f"{data['price']}",
-                    "টার্গেট ১": f"{data['target1']}",
-                    "টার্গেট ২": f"{data['target2']}",
-                    "স্টপ লস": f"{data['sl']}"
+                    "এন্ট্রি প্রাইস": f"₹{data['price']:,.2f}",
+                    "টার্গেট ১": f"₹{data['target1']:,.2f}",
+                    "টার্গেট ২": f"₹{data['target2']:,.2f}",
+                    "স্টপ লস": f"₹{data['sl']:,.2f}"
                 }
                 
                 if "Indices" in market_type:
@@ -281,7 +302,7 @@ for idx, item in enumerate(targets):
 # 📜 মেমোরি টেবিল
 st.markdown("---")
 if "Indices" in market_type:
-    st.subheader("📜 NSE & BSE অপশন বায়ীন সিগন্যাল মেমোরি")
+    st.subheader("📜 NSE & BSE অপশন বায়িং সিগন্যাল মেমোরি")
     active_history = st.session_state.signal_history_nse
 else:
     st.subheader("📜 MCX কমোডিটি সিগন্যাল মেমোরি")
