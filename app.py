@@ -168,7 +168,7 @@ def get_data_and_signal(target_info, m_type, tf):
         sl_pct = 0.004
 
         # 🎯 কেবল কড়া শর্তের পরেই স্ট্রং সিগন্যাল আসবে
-        if bull_score >= 3.75 and is_green_candle and is_high_volume:
+        if bull_score >= 3.65 and is_green_candle and is_high_volume:
             signal = "🚀 STRONG BUY CALL (CE)" if "Indices" in m_type else "🚀 CONFIRMED BULLISH BREAKOUT"
             status_text = f"🔥 কনফার্মড ভলিউম ব্রেকআউট! (Vol: {vol_ratio}x)"
             color = "green"
@@ -179,7 +179,7 @@ def get_data_and_signal(target_info, m_type, tf):
             if "Indices" in m_type:
                 option_suggestion = f"💡 **Recommended Strike:** ITM {itm_ce} CE | ATM {atm_strike} CE"
 
-        elif bear_score >= 3.75 and is_red_candle and is_high_volume:
+        elif bear_score >= 3.65 and is_red_candle and is_high_volume:
             signal = "🔻 STRONG BUY PUT (PE)" if "Indices" in m_type else "🔻 CONFIRMED BEARISH BREAKDOWN"
             status_text = f"🔥 কনফার্মড ভলিউম ব্রেকডাউন! (Vol: {vol_ratio}x)"
             color = "red"
