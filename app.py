@@ -166,7 +166,7 @@ def get_data_and_signal(target_info, m_type, tf):
         is_breakout_up = price > latest['Prev_High_5']
         is_breakout_down = price < latest['Prev_Low_5']
 
-        # কড়া স্কোরিং সিস্টেম (Strict Threshold = 3.75)
+        # কড়া স্কোরিং সিস্টেম (Strict Threshold = 3.85)
         bull_score, bear_score = 0.0, 0.0
 
         if latest['EMA_9'] > latest['EMA_21']: bull_score += 1.0
@@ -202,7 +202,7 @@ def get_data_and_signal(target_info, m_type, tf):
         sl_pct = 0.004
 
         # সিগন্যাল ট্রিগার (Strict Threshold = 3.75)
-        if bull_score >= 3.75 and is_green_candle:
+        if bull_score >= 3.85 and is_green_candle:
             signal = "🚀 STRONG BUY CALL (CE)" if "Indices" in m_type else "🚀 CONFIRMED BULLISH BREAKOUT"
             status_text = f"🔥 কনফার্মড ট্রেন্ড ব্রেকআউট! ({candle_time})"
             color = "green"
@@ -213,7 +213,7 @@ def get_data_and_signal(target_info, m_type, tf):
             if "Indices" in m_type:
                 option_suggestion = f"💡 **Recommended Strike:** ITM {itm_ce} CE | ATM {atm_strike} CE"
 
-        elif bear_score >= 3.75 and is_red_candle:
+        elif bear_score >= 3.85 and is_red_candle:
             signal = "🔻 STRONG BUY PUT (PE)" if "Indices" in m_type else "🔻 CONFIRMED BEARISH BREAKDOWN"
             status_text = f"🔥 কনফার্মড ট্রেন্ড ব্রেকডাউন! ({candle_time})"
             color = "red"
