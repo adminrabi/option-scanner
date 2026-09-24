@@ -98,7 +98,7 @@ def get_data_and_signal(target_info, m_type, tf):
             return None
 
         # 🧮 সঠিক গাণিতিক কনভার্সন লজিক (USD to MCX INR)
-        usd_inr = 93.50  # গড় ডলার রেট
+        usd_inr = 95.50  # গড় ডলার রেট
         duty_tax = 1.15   # ট্যাক্স ও প্রিমিয়াম ফ্যাক্টর
 
         if asset_type == "gold":
