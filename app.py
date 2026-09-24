@@ -179,7 +179,7 @@ def get_data_and_signal(target_info, m_type, tf):
             if "Indices" in m_type:
                 option_suggestion = f"💡 **Recommended Strike:** ITM {itm_ce} CE | ATM {atm_strike} CE"
 
-        elif bear_score >= 4 and is_red_candle and is_high_volume:
+        elif bear_score >= 3.75 and is_red_candle and is_high_volume:
             signal = "🔻 STRONG BUY PUT (PE)" if "Indices" in m_type else "🔻 CONFIRMED BEARISH BREAKDOWN"
             status_text = f"🔥 কনফার্মড ভলিউম ব্রেকডাউন! (Vol: {vol_ratio}x)"
             color = "red"
