@@ -61,25 +61,24 @@ if market_type == "📊 NSE & BSE Indices":
     ]
 else:
     targets = [
-        {"name": "CRUDE OIL", "ticker": "CL=F", "step": 50, "mult": 1},
-        {"name": "NATURAL GAS", "ticker": "NG=F", "step": 5, "mult": 1},
-        {"name": "GOLD", "ticker": "GC=F", "step": 100, "mult": 1},
-        {"name": "SILVER", "ticker": "SI=F", "step": 250, "mult": 1}
+        {"name": "CRUDE OIL", "ticker": "CL=F", "step": 50, "mult": 1, "multiplier": 83.5},
+        {"name": "NATURAL GAS", "ticker": "NG=F", "step": 5, "mult": 1, "multiplier": 83.5},
+        {"name": "GOLD", "ticker": "GC=F", "step": 100, "mult": 1, "multiplier": 2700}, # Approx conversion to MCX scale
+        {"name": "SILVER", "ticker": "SI=F", "step": 250, "mult": 1, "multiplier": 3100} # Approx conversion to MCX scale
     ]
 
 # ===================================================
-# 🧠 SMART INSTITUTIONAL BREAKOUT ALGORITHM
+# 🧠 HIGH-STRICTNESS BREAKOUT ALGORITHM
 # ===================================================
 def get_data_and_signal(target_info, m_type, tf):
     ticker = target_info['ticker']
     strike_step = target_info['step']
-    multiplier = target_info['mult']
+    opt_mult = target_info['mult']
 
     try:
         ticker_obj = yf.Ticker(ticker)
         df = None
 
-        # ৩ মিনিট এবং ৫ মিনিটের ডাটা ফেচিং মেকানিজম
         if tf == "3m":
             df_1m = ticker_obj.history(period="1d", interval="1m", auto_adjust=True)
             if df_1m is not None and not df_1m.empty and len(df_1m) >= 3:
@@ -91,18 +90,24 @@ def get_data_and_signal(target_info, m_type, tf):
                     'Volume': 'sum'
                 }).dropna()
         
-        # ফলব্যাক
         if df is None or df.empty or len(df) < 5:
             df = ticker_obj.history(period="1d", interval="5m", auto_adjust=True)
 
         if df is None or df.empty or len(df) < 5:
             return None
 
+        # MCX কারেন্সি কনভার্সন
+        if "Commodities" in m_type:
+            conv = target_info.get("multiplier", 1.0)
+            df['Close'] = df['Close'] * conv
+            df['Open'] = df['Open'] * conv
+            df['High'] = df['High'] * conv
+            df['Low'] = df['Low'] * conv
+
         # ইন্ডিকেটর ক্যালকুলেশন
         df['EMA_9'] = df['Close'].ewm(span=9, adjust=False).mean()
         df['EMA_21'] = df['Close'].ewm(span=21, adjust=False).mean()
 
-        # VWAP ক্যালকুলেশন
         cum_vol = df['Volume'].cumsum()
         cum_vol_price = (df['Close'] * df['Volume']).cumsum()
         df['VWAP'] = np.where(cum_vol > 0, cum_vol_price / cum_vol, df['Close'])
@@ -120,9 +125,9 @@ def get_data_and_signal(target_info, m_type, tf):
 
         df['Vol_SMA'] = df['Volume'].rolling(window=5, min_periods=1).mean()
 
-        # ব্রেকআউট লেভেল (গত ৩ ক্যান্ডেল)
-        df['Prev_High_3'] = df['High'].shift(1).rolling(3, min_periods=1).max()
-        df['Prev_Low_3'] = df['Low'].shift(1).rolling(3, min_periods=1).min()
+        # ৫ ক্যান্ডেলের কড়া ব্রেকআউট ফিল্টার
+        df['Prev_High_5'] = df['High'].shift(1).rolling(5, min_periods=1).max()
+        df['Prev_Low_5'] = df['Low'].shift(1).rolling(5, min_periods=1).min()
 
         latest = df.iloc[-1]
         price = round(latest['Close'], 2)
@@ -137,34 +142,33 @@ def get_data_and_signal(target_info, m_type, tf):
         vol_avg = latest['Vol_SMA'] if pd.notna(latest['Vol_SMA']) and latest['Vol_SMA'] > 0 else 1
         vol_ratio = round(latest['Volume'] / vol_avg, 2)
 
-        is_breakout_up = price > latest['Prev_High_3']
-        is_breakout_down = price < latest['Prev_Low_3']
+        is_breakout_up = price > latest['Prev_High_5']
+        is_breakout_down = price < latest['Prev_Low_5']
 
-        # স্কোরিং সিস্টেম
+        # কড়া স্কোরিং সিস্টেম (Strict Threshold 3.75)
         bull_score, bear_score = 0.0, 0.0
 
         if latest['EMA_9'] > latest['EMA_21']: bull_score += 1.0
         else: bear_score += 1.0
 
-        if rsi >= 52: bull_score += 1.0
-        elif rsi <= 48: bear_score += 1.0
+        if rsi >= 53: bull_score += 1.0
+        elif rsi <= 47: bear_score += 1.0
 
         if latest['MACD'] > latest['MACD_Signal']: bull_score += 1.0
         else: bear_score += 1.0
 
-        # VWAP কনফার্মেশন
-        if price >= latest['VWAP']: bull_score += 0.5
-        else: bear_score += 0.5
+        if price >= latest['VWAP']: bull_score += 0.75
+        else: bear_score += 0.75
 
-        if is_breakout_up: bull_score += 1.5
-        if is_breakout_down: bear_score += 1.5
+        if is_breakout_up: bull_score += 1.0
+        if is_breakout_down: bear_score += 1.0
 
         is_green_candle = latest['Close'] > latest['Open']
         is_red_candle = latest['Close'] < latest['Open']
 
         atm_strike = int(round(price / strike_step) * strike_step)
-        itm_ce = atm_strike - (strike_step * multiplier)
-        itm_pe = atm_strike + (strike_step * multiplier)
+        itm_ce = atm_strike - (strike_step * opt_mult)
+        itm_pe = atm_strike + (strike_step * opt_mult)
 
         sl, target1, target2 = 0.0, 0.0, 0.0
         option_suggestion = ""
@@ -176,8 +180,8 @@ def get_data_and_signal(target_info, m_type, tf):
         target_pct_2 = 0.010
         sl_pct = 0.004
 
-        # সিগন্যাল ট্রিগার কন্ডিশন (Threshold = 3.5)
-        if bull_score >= 3.5 and is_green_candle:
+        # সিগন্যাল কন্ডিশন (Strict Threshold = 3.75)
+        if bull_score >= 3.75 and is_green_candle:
             signal = "🚀 STRONG BUY CALL (CE)" if "Indices" in m_type else "🚀 CONFIRMED BULLISH BREAKOUT"
             status_text = f"🔥 কনফার্মড ট্রেন্ড ব্রেকআউট! ({candle_time})"
             color = "green"
@@ -188,7 +192,7 @@ def get_data_and_signal(target_info, m_type, tf):
             if "Indices" in m_type:
                 option_suggestion = f"💡 **Recommended Strike:** ITM {itm_ce} CE | ATM {atm_strike} CE"
 
-        elif bear_score >= 3.5 and is_red_candle:
+        elif bear_score >= 3.75 and is_red_candle:
             signal = "🔻 STRONG BUY PUT (PE)" if "Indices" in m_type else "🔻 CONFIRMED BEARISH BREAKDOWN"
             status_text = f"🔥 কনফার্মড ট্রেন্ড ব্রেকডাউন! ({candle_time})"
             color = "red"
@@ -235,7 +239,7 @@ for idx, item in enumerate(targets):
             elif data['color'] == 'orange': st.warning(f"### {data['signal']}\n\n{data['status_text']}")
             else: st.info(f"### {data['signal']}\n\n{data['status_text']}")
 
-            st.metric("স্পট প্রাইস", f"₹{data['price']}" if "Indices" in market_type else f"${data['price']}")
+            st.metric("স্পট প্রাইস (approx INR)", f"₹{data['price']}")
 
             st.write(f"**RSI:** {data['rsi']} | **Vol Ratio:** {data['vol_ratio']}x | **Time:** {data['candle_time']}")
 
@@ -277,7 +281,7 @@ for idx, item in enumerate(targets):
 # 📜 মেমোরি টেবিল
 st.markdown("---")
 if "Indices" in market_type:
-    st.subheader("📜 NSE & BSE অপশন বায়িং সিগন্যাল মেমোরি")
+    st.subheader("📜 NSE & BSE অপশন বায়ীন সিগন্যাল মেমোরি")
     active_history = st.session_state.signal_history_nse
 else:
     st.subheader("📜 MCX কমোডিটি সিগন্যাল মেমোরি")
