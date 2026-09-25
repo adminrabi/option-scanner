@@ -6,7 +6,7 @@ import datetime
 import pytz
 
 # ১. পেজ কনফিগারেশন
-st.set_page_config(page_title="High Accuracy Institutional Scanner", layout="wide")
+st.set_page_config(page_title="Institutional Smart Money Scanner", layout="wide")
 
 # ২. অটো রিফ্রেশ
 try:
@@ -23,7 +23,7 @@ if 'signal_history_mcx' not in st.session_state:
 if 'last_logged_time' not in st.session_state:
     st.session_state.last_logged_time = {}
 
-st.title("🎯 High-Accuracy Institutional Breakout & Trend Scanner")
+st.title("🎯 Institutional Smart Money & Trend Reversal Scanner")
 
 # ==========================================
 # ⚙️ SIDEBAR CONFIGURATION
@@ -68,7 +68,7 @@ else:
     ]
 
 # ===================================================
-# 🧠 SEPARATE ALGORITHMS FOR INDEX & COMMODITY
+# 🧠 INSTITUTIONAL SMART MONEY ALGORITHM
 # ===================================================
 def get_data_and_signal(target_info, m_type, tf):
     ticker = target_info['ticker']
@@ -91,13 +91,13 @@ def get_data_and_signal(target_info, m_type, tf):
                     'Volume': 'sum'
                 }).dropna()
         
-        if df is None or df.empty or len(df) < 5:
+        if df is None or df.empty or len(df) < 6:
             df = ticker_obj.history(period="1d", interval="5m", auto_adjust=True)
 
-        if df is None or df.empty or len(df) < 5:
+        if df is None or df.empty or len(df) < 6:
             return None
 
-        # 🧮 MCX-এর জন্য কনভার্সন লজিক (USD INR ₹94.00 ভিত্তিক)
+        # MCX Conversion Adjustments
         usd_inr = 94.00  
         duty_tax = 1.15   
 
@@ -111,30 +111,25 @@ def get_data_and_signal(target_info, m_type, tf):
             factor = usd_inr
             df['Close'] *= factor; df['Open'] *= factor; df['High'] *= factor; df['Low'] *= factor
 
-        # টেকনিক্যাল ইন্ডিকেটর
+        # টেকনিক্যাল গণনা
         df['EMA_9'] = df['Close'].ewm(span=9, adjust=False).mean()
         df['EMA_21'] = df['Close'].ewm(span=21, adjust=False).mean()
 
-        cum_vol = df['Volume'].cumsum()
-        cum_vol_price = (df['Close'] * df['Volume']).cumsum()
-        df['VWAP'] = np.where(cum_vol > 0, cum_vol_price / cum_vol, df['Close'])
+        # VWAP Approximated
+        df['TP'] = (df['High'] + df['Low'] + df['Close']) / 3
+        df['VWAP'] = df['TP'].expanding().mean()
 
+        # RSI calculation
         delta = df['Close'].diff()
         gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
         rs = gain / (loss + 1e-10)
         df['RSI'] = 100 - (100 / (1 + rs))
 
-        exp1 = df['Close'].ewm(span=12, adjust=False).mean()
-        exp2 = df['Close'].ewm(span=26, adjust=False).mean()
-        df['MACD'] = exp1 - exp2
-        df['MACD_Signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
-
-        # ৫ ক্যান্ডেল ব্রেকআউট
-        df['Prev_High_5'] = df['High'].shift(1).rolling(5, min_periods=1).max()
-        df['Prev_Low_5'] = df['Low'].shift(1).rolling(5, min_periods=1).min()
-
         latest = df.iloc[-1]
+        prev1 = df.iloc[-2]
+        prev2 = df.iloc[-3]
+
         price = round(latest['Close'], 2)
         
         ist_tz = pytz.timezone('Asia/Kolkata')
@@ -142,94 +137,71 @@ def get_data_and_signal(target_info, m_type, tf):
 
         rsi = round(latest['RSI'], 2) if pd.notna(latest['RSI']) else 50.0
 
-        is_breakout_up = price > latest['Prev_High_5']
-        is_breakout_down = price < latest['Prev_Low_5']
-        is_green_candle = latest['Close'] > latest['Open']
-        is_red_candle = latest['Close'] < latest['Open']
+        # ক্যান্ডেল মোমেন্টাম ফিল্টার (স্মার্ট মানি লজিক)
+        is_green = latest['Close'] > latest['Open']
+        is_red = latest['Close'] < latest['Open']
 
-        bull_score, bear_score = 0.0, 0.0
+        # ক্যান্ডেলের সাইজ ও প্রাইস অ্যাকশন
+        body_size = abs(latest['Close'] - latest['Open'])
+        prev_high_3 = df['High'].iloc[-4:-1].max()
+        prev_low_3 = df['Low'].iloc[-4:-1].min()
 
-        # ==========================================
-        # 🟢 ENGINE 1: NSE/BSE INDICES ENGINE (সংবেদনশীল)
-        # ==========================================
-        if "Indices" in m_type:
-            if latest['EMA_9'] > latest['EMA_21']: bull_score += 1.0
-            else: bear_score += 1.0
+        # ব্রেকআউট কনফার্মেশন
+        breakout_up = (price > prev_high_3) and is_green
+        breakout_down = (price < prev_low_3) and is_red
 
-            if rsi >= 50: bull_score += 1.0
-            elif rsi <= 50: bear_score += 1.0
+        # ট্রেন্ড কন্ডিশন
+        ema_bullish = latest['EMA_9'] > latest['EMA_21']
+        ema_bearish = latest['EMA_9'] < latest['EMA_21']
+        above_vwap = price >= latest['VWAP']
+        below_vwap = price < latest['VWAP']
 
-            if latest['MACD'] > latest['MACD_Signal']: bull_score += 1.0
-            else: bear_score += 1.0
+        signal = "NEUTRAL"
+        status_text = "⚪ মার্কেট সাইডওয়েজ / কনসোলিডেশন"
+        color = "gray"
 
-            if is_breakout_up: bull_score += 0.5
-            if is_breakout_down: bear_score += 0.5
+        # কড়া প্রাতিষ্ঠানিক রুলস (NO FAKE SIGNALS)
+        # Call Buy হতে হলে: ১) প্রাইজ ৩ ক্যান্ডেল হাই ভাঙতে হবে, ২) EMA বুলিশ হতে হবে, ৩) RSI ৫৫ এর উপরে, ৪) ক্যান্ডেল গ্রিন হতে হবে
+        if breakout_up and ema_bullish and rsi >= 53 and above_vwap:
+            signal = "🚀 CONFIRMED CALL BUY (CE)" if "Indices" in m_type else "🚀 STRONG BULLISH BREAKOUT"
+            status_text = f"🔥 স্মার্ট মানি বাইং চালু হয়েছে! ({candle_time})"
+            color = "green"
 
-            # থ্রেশহোল্ড ৩.০ (ইন্ডেক্সের জন্য দ্রুত সিগন্যাল)
-            REQ_SCORE = 3.0
+        # Put Buy হতে হলে: ১) প্রাইজ ৩ ক্যান্ডেল লো ভাঙতে হবে, ২) EMA বিয়ারিশ হতে হবে, ৩) RSI ৪৫ এর নিচে, ৪) ক্যান্ডেল রেড হতে হবে
+        elif breakout_down and ema_bearish and rsi <= 47 and below_vwap:
+            signal = "🔻 CONFIRMED PUT BUY (PE)" if "Indices" in m_type else "🔻 STRONG BEARISH BREAKDOWN"
+            status_text = f"🔥 স্মার্ট মানি সেলিং চালু হয়েছে! ({candle_time})"
+            color = "red"
 
-        # ==========================================
-        # 🔴 ENGINE 2: MCX COMMODITY ENGINE (কড়া)
-        # ==========================================
-        else:
-            if latest['EMA_9'] > latest['EMA_21']: bull_score += 1.0
-            else: bear_score += 1.0
+        elif (ema_bullish and is_green) or (ema_bearish and is_red):
+            signal = "WAIT & WATCH"
+            status_text = "⚠️ রিভার্সাল বা ফেক আউট এড়াতে অপেক্ষা করুন"
+            color = "orange"
 
-            if rsi >= 53: bull_score += 1.0
-            elif rsi <= 47: bear_score += 1.0
+        # টার্গেট ও স্টপলস হিসাব
+        target_pct_1 = 0.004
+        target_pct_2 = 0.008
+        sl_pct = 0.003
 
-            if latest['MACD'] > latest['MACD_Signal']: bull_score += 1.0
-            else: bear_score += 1.0
+        sl, target1, target2 = 0.0, 0.0, 0.0
+        if color == "green":
+            sl = round(price * (1 - sl_pct), 2)
+            target1 = round(price * (1 + target_pct_1), 2)
+            target2 = round(price * (1 + target_pct_2), 2)
+        elif color == "red":
+            sl = round(price * (1 + sl_pct), 2)
+            target1 = round(price * (1 - target_pct_1), 2)
+            target2 = round(price * (1 - target_pct_2), 2)
 
-            if price >= latest['VWAP']: bull_score += 0.75
-            else: bear_score += 0.75
-
-            if is_breakout_up: bull_score += 1.0
-            if is_breakout_down: bear_score += 1.0
-
-            # থ্রেশহোল্ড ৩.৭৫ (কমোডিটির জন্য কড়া সিগন্যাল)
-            REQ_SCORE = 3.75
-
-        # স্ট্রাইক প্রাইস ক্যালকুলেশন
         atm_strike = int(round(price / strike_step) * strike_step)
         itm_ce = atm_strike - (strike_step * opt_mult)
         itm_pe = atm_strike + (strike_step * opt_mult)
 
-        sl, target1, target2 = 0.0, 0.0, 0.0
         option_suggestion = ""
-        signal = "NEUTRAL"
-        status_text = "⚪ মার্কেট শান্ত / সাইডওয়েজ"
-        color = "gray"
-
-        target_pct_1 = 0.005
-        target_pct_2 = 0.010
-        sl_pct = 0.004
-
-        # সিগন্যাল জেনারেটর
-        if bull_score >= REQ_SCORE and is_green_candle:
-            signal = "🚀 STRONG BUY CALL (CE)" if "Indices" in m_type else "🚀 CONFIRMED BULLISH BREAKOUT"
-            status_text = f"🔥 কনফার্মড আপট্রেন্ড! ({candle_time})"
-            color = "green"
-            sl = round(price * (1 - sl_pct), 2)
-            target1 = round(price * (1 + target_pct_1), 2)
-            target2 = round(price * (1 + target_pct_2), 2)
-            if "Indices" in m_type:
-                option_suggestion = f"💡 **Recommended Strike:** ITM {itm_ce} CE | ATM {atm_strike} CE"
-
-        elif bear_score >= REQ_SCORE and is_red_candle:
-            signal = "🔻 STRONG BUY PUT (PE)" if "Indices" in m_type else "🔻 CONFIRMED BEARISH BREAKDOWN"
-            status_text = f"🔥 কনফার্মড ডাউনট্রেন্ড! ({candle_time})"
-            color = "red"
-            sl = round(price * (1 + sl_pct), 2)
-            target1 = round(price * (1 - target_pct_1), 2)
-            target2 = round(price * (1 - target_pct_2), 2)
-            if "Indices" in m_type:
-                option_suggestion = f"💡 **Recommended Strike:** ITM {itm_pe} PE | ATM {atm_strike} PE"
-
-        elif bull_score >= 2.0 or bear_score >= 2.0:
-            signal = "WAIT & WATCH"
-            status_text = "⚠️ মার্কেট নিউট্রাল/পর্যবেক্ষণ করা হচ্ছে"
-            color = "orange"
+        if color == "green" and "Indices" in m_type:
+            option_suggestion = f"💡 **Recommended:** ITM {itm_ce} CE | ATM {atm_strike} CE"
+        elif color == "red" and "Indices" in m_type:
+            option_suggestion = f"💡 **Recommended:** ITM {itm_pe} PE | ATM {atm_strike} PE"
 
         return {
             'price': price,
