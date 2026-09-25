@@ -6,7 +6,7 @@ import datetime
 import pytz
 
 # ১. পেজ কনফিগারেশন
-st.set_page_config(page_title="Price Action Breakout Scanner", layout="wide")
+st.set_page_config(page_title="Early Entry Price Action Scanner", layout="wide")
 
 # ২. অটো রিফ্রেশ
 try:
@@ -23,7 +23,7 @@ if 'signal_history_mcx' not in st.session_state:
 if 'last_logged_time' not in st.session_state:
     st.session_state.last_logged_time = {}
 
-st.title("🎯 Pure Price Action & Breakout Scanner")
+st.title("⚡ Early Entry Fast Price Action Scanner")
 
 # ==========================================
 # ⚙️ SIDEBAR CONFIGURATION
@@ -37,13 +37,13 @@ st.sidebar.markdown("---")
 
 timeframe = st.sidebar.selectbox(
     "⏱️ ক্যান্ডেল টাইমফ্রেম:",
-    ["3m", "5m"],
-    index=0
+    ["1m", "3m", "5m"],
+    index=1
 )
 
 auto_refresh = st.sidebar.checkbox("⏱️ অটো-রিফ্রেশ চালু রাখুন", value=True)
 if auto_refresh:
-    refresh_interval = st.sidebar.slider("রিফ্রেশ ইন্টারভাল (সেকেন্ড):", min_value=10, max_value=60, value=15)
+    refresh_interval = st.sidebar.slider("রিফ্রেশ ইন্টারভাল (সেকেন্ড):", min_value=5, max_value=30, value=10)
     if HAS_AUTOREFRESH:
         st_autorefresh(interval=refresh_interval * 1000, key="datarefresh")
 
@@ -68,7 +68,7 @@ else:
     ]
 
 # ===================================================
-# 🧠 PURE PRICE ACTION & REVERSAL ENGINE
+# 🧠 EARLY BREAKOUT PRICE ACTION ENGINE
 # ===================================================
 def get_data_and_signal(target_info, m_type, tf):
     ticker = target_info['ticker']
@@ -78,24 +78,19 @@ def get_data_and_signal(target_info, m_type, tf):
 
     try:
         ticker_obj = yf.Ticker(ticker)
-        df = None
-
-        if tf == "3m":
-            df_1m = ticker_obj.history(period="1d", interval="1m", auto_adjust=True)
-            if df_1m is not None and not df_1m.empty and len(df_1m) >= 3:
-                df = df_1m.resample('3min').agg({
-                    'Open': 'first',
-                    'High': 'max',
-                    'Low': 'min',
-                    'Close': 'last',
-                    'Volume': 'sum'
-                }).dropna()
-        
-        if df is None or df.empty or len(df) < 5:
-            df = ticker_obj.history(period="1d", interval="5m", auto_adjust=True)
+        df = ticker_obj.history(period="1d", interval="1m", auto_adjust=True)
 
         if df is None or df.empty or len(df) < 5:
             return None
+
+        if tf == "3m":
+            df = df.resample('3min').agg({
+                'Open': 'first', 'High': 'max', 'Low': 'min', 'Close': 'last', 'Volume': 'sum'
+            }).dropna()
+        elif tf == "5m":
+            df = df.resample('5min').agg({
+                'Open': 'first', 'High': 'max', 'Low': 'min', 'Close': 'last', 'Volume': 'sum'
+            }).dropna()
 
         # MCX Currency Adjustment
         usd_inr = 94.00  
@@ -112,50 +107,37 @@ def get_data_and_signal(target_info, m_type, tf):
             df['Close'] *= factor; df['Open'] *= factor; df['High'] *= factor; df['Low'] *= factor
 
         latest = df.iloc[-1]
-        prev1 = df.iloc[-2]
         
-        # পাস্ট ৫টি ক্যান্ডেলের রেঞ্জ
-        past_5_high = df['High'].iloc[-6:-1].max()
-        past_5_low = df['Low'].iloc[-6:-1].min()
+        # দ্রুত এন্ট্রির জন্য বিগত ৩টি ক্যান্ডেলের হাই ও লো হাইলাইট
+        past_3_high = df['High'].iloc[-4:-1].max()
+        past_3_low = df['Low'].iloc[-4:-1].min()
 
         price = round(latest['Close'], 2)
         
         ist_tz = pytz.timezone('Asia/Kolkata')
         candle_time = latest.name.strftime("%H:%M") if latest.name.tzinfo is None else latest.name.tz_convert(ist_tz).strftime("%H:%M")
 
-        is_green = latest['Close'] > latest['Open']
+        is_green = latest['Close'] >= latest['Open']
         is_red = latest['Close'] < latest['Open']
 
-        # ক্যান্ডেল বডি ও উইক (Wick) ট্র্যাপ ফিল্টার
-        total_range = latest['High'] - latest['Low']
-        body_range = abs(latest['Close'] - latest['Open'])
-        
-        # রিভার্সাল ফিল্টার: যদি ক্যান্ডেলের উপর বড় শ্যাডো/উইক থাকে, তবে কল বাই নিষিদ্ধ
-        upper_wick = latest['High'] - max(latest['Close'], latest['Open'])
-        lower_wick = min(latest['Close'], latest['Open']) - latest['Low']
-
         signal = "NEUTRAL"
-        status_text = "⚪ মার্কেট সাইডওয়েজ বা নিউট্রাল"
+        status_text = "⚪ মার্কেট শান্ত / সাইডওয়েজ"
         color = "gray"
 
-        # প্রাইজ অ্যাকশন কনফার্মেশন (No Lagging Indicators)
-        # ১. প্রাইজকে ৫ ক্যান্ডেল হাই ভাঙতে হবে
-        # ২. ক্যান্ডেল গ্রিন হতে হবে এবং আপার উইক ছোট হতে হবে (রিভার্সাল ট্র্যাপ এড়াতে)
-        if (price > past_5_high) and is_green and (upper_wick < body_range * 0.5):
-            signal = "🚀 CONFIRMED CALL BUY (CE)" if "Indices" in m_type else "🚀 BULLISH BREAKOUT"
-            status_text = f"🔥 রেঞ্জ ব্রেকআউট! বাইং মোমেন্টাম ({candle_time})"
+        # EARLY ENTRY TRIGGER (প্রাইজ আগের হাই/লো ক্রস করার সাথে সাথেই সিগন্যাল)
+        if (price > past_3_high) and is_green:
+            signal = "🚀 EARLY CALL BUY (CE)" if "Indices" in m_type else "🚀 EARLY BULLISH BREAKOUT"
+            status_text = f"⚡ দ্রুত এন্ট্রি! বুলিশ ব্রেকআউট শুরু হয়েছে ({candle_time})"
             color = "green"
 
-        # ১. প্রাইজকে ৫ ক্যান্ডেল লো ভাঙতে হবে
-        # ২. ক্যান্ডেল রেড হতে হবে এবং লোয়ার উইক ছোট হতে হবে
-        elif (price < past_5_low) and is_red and (lower_wick < body_range * 0.5):
-            signal = "🔻 CONFIRMED PUT BUY (PE)" if "Indices" in m_type else "🔻 BEARISH BREAKDOWN"
-            status_text = f"🔥 রেঞ্জ ব্রেকডাউন! সেলিং মোমেন্টাম ({candle_time})"
+        elif (price < past_3_low) and is_red:
+            signal = "🔻 EARLY PUT BUY (PE)" if "Indices" in m_type else "🔻 EARLY BEARISH BREAKDOWN"
+            status_text = f"⚡ দ্রুত এন্ট্রি! বিয়ারিশ ব্রেকডাউন শুরু হয়েছে ({candle_time})"
             color = "red"
 
         else:
             signal = "WAIT & WATCH"
-            status_text = "⚠️ ফেক আউট/রিভার্সাল এড়াতে ট্রেড বন্ধ রাখুন"
+            status_text = "⚠️ উপযুক্ত মোমেন্টামের অপেক্ষা করুন"
             color = "orange"
 
         # টার্গেট ও স্টপলস
@@ -179,13 +161,12 @@ def get_data_and_signal(target_info, m_type, tf):
 
         option_suggestion = ""
         if color == "green" and "Indices" in m_type:
-            option_suggestion = f"💡 **Recommended:** ITM {itm_ce} CE | ATM {atm_strike} CE"
+            option_suggestion = f"💡 **Suggested Strike:** ITM {itm_ce} CE | ATM {atm_strike} CE"
         elif color == "red" and "Indices" in m_type:
-            option_suggestion = f"💡 **Recommended:** ITM {itm_pe} PE | ATM {atm_strike} PE"
+            option_suggestion = f"💡 **Suggested Strike:** ITM {itm_pe} PE | ATM {atm_strike} PE"
 
         return {
             'price': price,
-            'rsi': 50.0,
             'signal': signal,
             'status_text': status_text,
             'color': color,
