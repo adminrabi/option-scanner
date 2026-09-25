@@ -68,7 +68,7 @@ else:
     ]
 
 # ===================================================
-# 🧠 ACCURATE MCX CONVERSION & BREAKOUT ALGORITHM
+# 🧠 SEPARATE ALGORITHMS FOR INDEX & COMMODITY
 # ===================================================
 def get_data_and_signal(target_info, m_type, tf):
     ticker = target_info['ticker']
@@ -97,35 +97,21 @@ def get_data_and_signal(target_info, m_type, tf):
         if df is None or df.empty or len(df) < 5:
             return None
 
-        # 🧮 সঠিক গাণিতিক কনভার্সন লজিক (USD to MCX INR)
-        usd_inr = 94.50  # গড় ডলার রেট
-        duty_tax = 1.15   # ট্যাক্স ও প্রিমিয়াম ফ্যাক্টর
+        # 🧮 MCX-এর জন্য কনভার্সন লজিক (USD INR ₹94.00 ভিত্তিক)
+        usd_inr = 94.00  
+        duty_tax = 1.15   
 
         if asset_type == "gold":
-            # 1 Troy Ounce = 31.10347 grams -> MCX 10 grams Conversion
             factor = (10 / 31.10347) * usd_inr * duty_tax
-            df['Close'] = df['Close'] * factor
-            df['Open'] = df['Open'] * factor
-            df['High'] = df['High'] * factor
-            df['Low'] = df['Low'] * factor
-
+            df['Close'] *= factor; df['Open'] *= factor; df['High'] *= factor; df['Low'] *= factor
         elif asset_type == "silver":
-            # 1 Troy Ounce = 31.10347 grams -> MCX 1 kg (1000 grams) Conversion
             factor = (1000 / 31.10347) * usd_inr * duty_tax
-            df['Close'] = df['Close'] * factor
-            df['Open'] = df['Open'] * factor
-            df['High'] = df['High'] * factor
-            df['Low'] = df['Low'] * factor
-
+            df['Close'] *= factor; df['Open'] *= factor; df['High'] *= factor; df['Low'] *= factor
         elif asset_type in ["crude", "ng"]:
-            # ব্যারেল থেকে লিটার/গ্যালন কনভার্সন
             factor = usd_inr
-            df['Close'] = df['Close'] * factor
-            df['Open'] = df['Open'] * factor
-            df['High'] = df['High'] * factor
-            df['Low'] = df['Low'] * factor
+            df['Close'] *= factor; df['Open'] *= factor; df['High'] *= factor; df['Low'] *= factor
 
-        # ইন্ডিকেটর ক্যালকুলেশন
+        # টেকনিক্যাল ইন্ডিকেটর
         df['EMA_9'] = df['Close'].ewm(span=9, adjust=False).mean()
         df['EMA_21'] = df['Close'].ewm(span=21, adjust=False).mean()
 
@@ -144,9 +130,7 @@ def get_data_and_signal(target_info, m_type, tf):
         df['MACD'] = exp1 - exp2
         df['MACD_Signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
 
-        df['Vol_SMA'] = df['Volume'].rolling(window=5, min_periods=1).mean()
-
-        # ৫ ক্যান্ডেলের ব্রেকআউট ফিল্টার
+        # ৫ ক্যান্ডেল ব্রেকআউট
         df['Prev_High_5'] = df['High'].shift(1).rolling(5, min_periods=1).max()
         df['Prev_Low_5'] = df['Low'].shift(1).rolling(5, min_periods=1).min()
 
@@ -154,39 +138,59 @@ def get_data_and_signal(target_info, m_type, tf):
         price = round(latest['Close'], 2)
         
         ist_tz = pytz.timezone('Asia/Kolkata')
-        if latest.name.tzinfo is None:
-            candle_time = latest.name.strftime("%H:%M")
-        else:
-            candle_time = latest.name.tz_convert(ist_tz).strftime("%H:%M")
+        candle_time = latest.name.strftime("%H:%M") if latest.name.tzinfo is None else latest.name.tz_convert(ist_tz).strftime("%H:%M")
 
         rsi = round(latest['RSI'], 2) if pd.notna(latest['RSI']) else 50.0
-        vol_avg = latest['Vol_SMA'] if pd.notna(latest['Vol_SMA']) and latest['Vol_SMA'] > 0 else 1
-        vol_ratio = round(latest['Volume'] / vol_avg, 2)
 
         is_breakout_up = price > latest['Prev_High_5']
         is_breakout_down = price < latest['Prev_Low_5']
-
-        # কড়া স্কোরিং সিস্টেম (Strict Threshold = 3.85)
-        bull_score, bear_score = 0.0, 0.0
-
-        if latest['EMA_9'] > latest['EMA_21']: bull_score += 1.0
-        else: bear_score += 1.0
-
-        if rsi >= 53: bull_score += 1.0
-        elif rsi <= 47: bear_score += 1.0
-
-        if latest['MACD'] > latest['MACD_Signal']: bull_score += 1.0
-        else: bear_score += 1.0
-
-        if price >= latest['VWAP']: bull_score += 0.75
-        else: bear_score += 0.75
-
-        if is_breakout_up: bull_score += 1.0
-        if is_breakout_down: bear_score += 1.0
-
         is_green_candle = latest['Close'] > latest['Open']
         is_red_candle = latest['Close'] < latest['Open']
 
+        bull_score, bear_score = 0.0, 0.0
+
+        # ==========================================
+        # 🟢 ENGINE 1: NSE/BSE INDICES ENGINE (সংবেদনশীল)
+        # ==========================================
+        if "Indices" in m_type:
+            if latest['EMA_9'] > latest['EMA_21']: bull_score += 1.0
+            else: bear_score += 1.0
+
+            if rsi >= 50: bull_score += 1.0
+            elif rsi <= 50: bear_score += 1.0
+
+            if latest['MACD'] > latest['MACD_Signal']: bull_score += 1.0
+            else: bear_score += 1.0
+
+            if is_breakout_up: bull_score += 0.5
+            if is_breakout_down: bear_score += 0.5
+
+            # থ্রেশহোল্ড ৩.০ (ইন্ডেক্সের জন্য দ্রুত সিগন্যাল)
+            REQ_SCORE = 3.0
+
+        # ==========================================
+        # 🔴 ENGINE 2: MCX COMMODITY ENGINE (কড়া)
+        # ==========================================
+        else:
+            if latest['EMA_9'] > latest['EMA_21']: bull_score += 1.0
+            else: bear_score += 1.0
+
+            if rsi >= 53: bull_score += 1.0
+            elif rsi <= 47: bear_score += 1.0
+
+            if latest['MACD'] > latest['MACD_Signal']: bull_score += 1.0
+            else: bear_score += 1.0
+
+            if price >= latest['VWAP']: bull_score += 0.75
+            else: bear_score += 0.75
+
+            if is_breakout_up: bull_score += 1.0
+            if is_breakout_down: bear_score += 1.0
+
+            # থ্রেশহোল্ড ৩.৭৫ (কমোডিটির জন্য কড়া সিগন্যাল)
+            REQ_SCORE = 3.75
+
+        # স্ট্রাইক প্রাইস ক্যালকুলেশন
         atm_strike = int(round(price / strike_step) * strike_step)
         itm_ce = atm_strike - (strike_step * opt_mult)
         itm_pe = atm_strike + (strike_step * opt_mult)
@@ -201,38 +205,35 @@ def get_data_and_signal(target_info, m_type, tf):
         target_pct_2 = 0.010
         sl_pct = 0.004
 
-        # সিগন্যাল ট্রিগার (Strict Threshold = 3.85)
-        if bull_score >= 3.85 and is_green_candle:
+        # সিগন্যাল জেনারেটর
+        if bull_score >= REQ_SCORE and is_green_candle:
             signal = "🚀 STRONG BUY CALL (CE)" if "Indices" in m_type else "🚀 CONFIRMED BULLISH BREAKOUT"
-            status_text = f"🔥 কনফার্মড ট্রেন্ড ব্রেকআউট! ({candle_time})"
+            status_text = f"🔥 কনফার্মড আপট্রেন্ড! ({candle_time})"
             color = "green"
             sl = round(price * (1 - sl_pct), 2)
             target1 = round(price * (1 + target_pct_1), 2)
             target2 = round(price * (1 + target_pct_2), 2)
-            
             if "Indices" in m_type:
                 option_suggestion = f"💡 **Recommended Strike:** ITM {itm_ce} CE | ATM {atm_strike} CE"
 
-        elif bear_score >= 3.85 and is_red_candle:
+        elif bear_score >= REQ_SCORE and is_red_candle:
             signal = "🔻 STRONG BUY PUT (PE)" if "Indices" in m_type else "🔻 CONFIRMED BEARISH BREAKDOWN"
-            status_text = f"🔥 কনফার্মড ট্রেন্ড ব্রেকডাউন! ({candle_time})"
+            status_text = f"🔥 কনফার্মড ডাউনট্রেন্ড! ({candle_time})"
             color = "red"
             sl = round(price * (1 + sl_pct), 2)
             target1 = round(price * (1 - target_pct_1), 2)
             target2 = round(price * (1 - target_pct_2), 2)
-            
             if "Indices" in m_type:
                 option_suggestion = f"💡 **Recommended Strike:** ITM {itm_pe} PE | ATM {atm_strike} PE"
 
         elif bull_score >= 2.0 or bear_score >= 2.0:
             signal = "WAIT & WATCH"
-            status_text = "⚠️ মার্কেট পর্যবেক্ষণ করা হচ্ছে"
+            status_text = "⚠️ মার্কেট নিউট্রাল/পর্যবেক্ষণ করা হচ্ছে"
             color = "orange"
 
         return {
             'price': price,
             'rsi': rsi,
-            'vol_ratio': vol_ratio,
             'signal': signal,
             'status_text': status_text,
             'color': color,
@@ -260,9 +261,9 @@ for idx, item in enumerate(targets):
             elif data['color'] == 'orange': st.warning(f"### {data['signal']}\n\n{data['status_text']}")
             else: st.info(f"### {data['signal']}\n\n{data['status_text']}")
 
-            st.metric("স্পট প্রাইস (MCX Approx ₹)", f"₹{data['price']:,.2f}")
+            st.metric("লাইভ প্রাইস", f"₹{data['price']:,.2f}")
 
-            st.write(f"**RSI:** {data['rsi']} | **Vol Ratio:** {data['vol_ratio']}x | **Time:** {data['candle_time']}")
+            st.write(f"**RSI:** {data['rsi']} | **Time:** {data['candle_time']}")
 
             is_confirmed_signal = data['color'] in ['green', 'red']
 
