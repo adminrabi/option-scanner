@@ -6,7 +6,7 @@ import datetime
 import pytz
 
 # ১. পেজ কনফিগারেশন
-st.set_page_config(page_title="Institutional Smart Money Scanner", layout="wide")
+st.set_page_config(page_title="Price Action Breakout Scanner", layout="wide")
 
 # ২. অটো রিফ্রেশ
 try:
@@ -23,7 +23,7 @@ if 'signal_history_mcx' not in st.session_state:
 if 'last_logged_time' not in st.session_state:
     st.session_state.last_logged_time = {}
 
-st.title("🎯 Institutional Smart Money & Trend Reversal Scanner")
+st.title("🎯 Pure Price Action & Breakout Scanner")
 
 # ==========================================
 # ⚙️ SIDEBAR CONFIGURATION
@@ -68,7 +68,7 @@ else:
     ]
 
 # ===================================================
-# 🧠 INSTITUTIONAL SMART MONEY ALGORITHM
+# 🧠 PURE PRICE ACTION & REVERSAL ENGINE
 # ===================================================
 def get_data_and_signal(target_info, m_type, tf):
     ticker = target_info['ticker']
@@ -91,13 +91,13 @@ def get_data_and_signal(target_info, m_type, tf):
                     'Volume': 'sum'
                 }).dropna()
         
-        if df is None or df.empty or len(df) < 6:
+        if df is None or df.empty or len(df) < 5:
             df = ticker_obj.history(period="1d", interval="5m", auto_adjust=True)
 
-        if df is None or df.empty or len(df) < 6:
+        if df is None or df.empty or len(df) < 5:
             return None
 
-        # MCX Conversion Adjustments
+        # MCX Currency Adjustment
         usd_inr = 94.00  
         duty_tax = 1.15   
 
@@ -111,74 +111,54 @@ def get_data_and_signal(target_info, m_type, tf):
             factor = usd_inr
             df['Close'] *= factor; df['Open'] *= factor; df['High'] *= factor; df['Low'] *= factor
 
-        # টেকনিক্যাল গণনা
-        df['EMA_9'] = df['Close'].ewm(span=9, adjust=False).mean()
-        df['EMA_21'] = df['Close'].ewm(span=21, adjust=False).mean()
-
-        # VWAP Approximated
-        df['TP'] = (df['High'] + df['Low'] + df['Close']) / 3
-        df['VWAP'] = df['TP'].expanding().mean()
-
-        # RSI calculation
-        delta = df['Close'].diff()
-        gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-        loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-        rs = gain / (loss + 1e-10)
-        df['RSI'] = 100 - (100 / (1 + rs))
-
         latest = df.iloc[-1]
         prev1 = df.iloc[-2]
-        prev2 = df.iloc[-3]
+        
+        # পাস্ট ৫টি ক্যান্ডেলের রেঞ্জ
+        past_5_high = df['High'].iloc[-6:-1].max()
+        past_5_low = df['Low'].iloc[-6:-1].min()
 
         price = round(latest['Close'], 2)
         
         ist_tz = pytz.timezone('Asia/Kolkata')
         candle_time = latest.name.strftime("%H:%M") if latest.name.tzinfo is None else latest.name.tz_convert(ist_tz).strftime("%H:%M")
 
-        rsi = round(latest['RSI'], 2) if pd.notna(latest['RSI']) else 50.0
-
-        # ক্যান্ডেল মোমেন্টাম ফিল্টার (স্মার্ট মানি লজিক)
         is_green = latest['Close'] > latest['Open']
         is_red = latest['Close'] < latest['Open']
 
-        # ক্যান্ডেলের সাইজ ও প্রাইস অ্যাকশন
-        body_size = abs(latest['Close'] - latest['Open'])
-        prev_high_3 = df['High'].iloc[-4:-1].max()
-        prev_low_3 = df['Low'].iloc[-4:-1].min()
-
-        # ব্রেকআউট কনফার্মেশন
-        breakout_up = (price > prev_high_3) and is_green
-        breakout_down = (price < prev_low_3) and is_red
-
-        # ট্রেন্ড কন্ডিশন
-        ema_bullish = latest['EMA_9'] > latest['EMA_21']
-        ema_bearish = latest['EMA_9'] < latest['EMA_21']
-        above_vwap = price >= latest['VWAP']
-        below_vwap = price < latest['VWAP']
+        # ক্যান্ডেল বডি ও উইক (Wick) ট্র্যাপ ফিল্টার
+        total_range = latest['High'] - latest['Low']
+        body_range = abs(latest['Close'] - latest['Open'])
+        
+        # রিভার্সাল ফিল্টার: যদি ক্যান্ডেলের উপর বড় শ্যাডো/উইক থাকে, তবে কল বাই নিষিদ্ধ
+        upper_wick = latest['High'] - max(latest['Close'], latest['Open'])
+        lower_wick = min(latest['Close'], latest['Open']) - latest['Low']
 
         signal = "NEUTRAL"
-        status_text = "⚪ মার্কেট সাইডওয়েজ / কনসোলিডেশন"
+        status_text = "⚪ মার্কেট সাইডওয়েজ বা নিউট্রাল"
         color = "gray"
 
-        # কড়া প্রাতিষ্ঠানিক রুলস (NO FAKE SIGNALS)
-        # Call Buy হতে হলে: ১) প্রাইজ ৩ ক্যান্ডেল হাই ভাঙতে হবে, ২) EMA বুলিশ হতে হবে, ৩) RSI ৫৫ এর উপরে, ৪) ক্যান্ডেল গ্রিন হতে হবে
-        if breakout_up and ema_bullish and rsi >= 53 and above_vwap:
-            signal = "🚀 CONFIRMED CALL BUY (CE)" if "Indices" in m_type else "🚀 STRONG BULLISH BREAKOUT"
-            status_text = f"🔥 স্মার্ট মানি বাইং চালু হয়েছে! ({candle_time})"
+        # প্রাইজ অ্যাকশন কনফার্মেশন (No Lagging Indicators)
+        # ১. প্রাইজকে ৫ ক্যান্ডেল হাই ভাঙতে হবে
+        # ২. ক্যান্ডেল গ্রিন হতে হবে এবং আপার উইক ছোট হতে হবে (রিভার্সাল ট্র্যাপ এড়াতে)
+        if (price > past_5_high) and is_green and (upper_wick < body_range * 0.5):
+            signal = "🚀 CONFIRMED CALL BUY (CE)" if "Indices" in m_type else "🚀 BULLISH BREAKOUT"
+            status_text = f"🔥 রেঞ্জ ব্রেকআউট! বাইং মোমেন্টাম ({candle_time})"
             color = "green"
 
-        # Put Buy হতে হলে: ১) প্রাইজ ৩ ক্যান্ডেল লো ভাঙতে হবে, ২) EMA বিয়ারিশ হতে হবে, ৩) RSI ৪৫ এর নিচে, ৪) ক্যান্ডেল রেড হতে হবে
-        elif breakout_down and ema_bearish and rsi <= 47 and below_vwap:
-            signal = "🔻 CONFIRMED PUT BUY (PE)" if "Indices" in m_type else "🔻 STRONG BEARISH BREAKDOWN"
-            status_text = f"🔥 স্মার্ট মানি সেলিং চালু হয়েছে! ({candle_time})"
+        # ১. প্রাইজকে ৫ ক্যান্ডেল লো ভাঙতে হবে
+        # ২. ক্যান্ডেল রেড হতে হবে এবং লোয়ার উইক ছোট হতে হবে
+        elif (price < past_5_low) and is_red and (lower_wick < body_range * 0.5):
+            signal = "🔻 CONFIRMED PUT BUY (PE)" if "Indices" in m_type else "🔻 BEARISH BREAKDOWN"
+            status_text = f"🔥 রেঞ্জ ব্রেকডাউন! সেলিং মোমেন্টাম ({candle_time})"
             color = "red"
 
-        elif (ema_bullish and is_green) or (ema_bearish and is_red):
+        else:
             signal = "WAIT & WATCH"
-            status_text = "⚠️ রিভার্সাল বা ফেক আউট এড়াতে অপেক্ষা করুন"
+            status_text = "⚠️ ফেক আউট/রিভার্সাল এড়াতে ট্রেড বন্ধ রাখুন"
             color = "orange"
 
-        # টার্গেট ও স্টপলস হিসাব
+        # টার্গেট ও স্টপলস
         target_pct_1 = 0.004
         target_pct_2 = 0.008
         sl_pct = 0.003
@@ -205,7 +185,7 @@ def get_data_and_signal(target_info, m_type, tf):
 
         return {
             'price': price,
-            'rsi': rsi,
+            'rsi': 50.0,
             'signal': signal,
             'status_text': status_text,
             'color': color,
@@ -235,7 +215,7 @@ for idx, item in enumerate(targets):
 
             st.metric("লাইভ প্রাইস", f"₹{data['price']:,.2f}")
 
-            st.write(f"**RSI:** {data['rsi']} | **Time:** {data['candle_time']}")
+            st.write(f"**Candle Time:** {data['candle_time']}")
 
             is_confirmed_signal = data['color'] in ['green', 'red']
 
