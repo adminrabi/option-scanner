@@ -6,7 +6,7 @@ import datetime
 import pytz
 
 # ১. পেজ কনফিগারেশন
-st.set_page_config(page_title="Early Entry Price Action Scanner", layout="wide")
+st.set_page_config(page_title="Price Action Breakout Scanner Pro", layout="wide")
 
 # ২. অটো রিফ্রেশ
 try:
@@ -23,7 +23,7 @@ if 'signal_history_mcx' not in st.session_state:
 if 'last_logged_time' not in st.session_state:
     st.session_state.last_logged_time = {}
 
-st.title("⚡ Early Entry Fast Price Action Scanner")
+st.title("🎯 High-Precision Price Action & Breakout Scanner Pro")
 
 # ==========================================
 # ⚙️ SIDEBAR CONFIGURATION
@@ -37,13 +37,13 @@ st.sidebar.markdown("---")
 
 timeframe = st.sidebar.selectbox(
     "⏱️ ক্যান্ডেল টাইমফ্রেম:",
-    ["1m", "3m", "5m"],
-    index=1
+    ["3m", "5m"],
+    index=1  # Default to 5m for safer signals
 )
 
 auto_refresh = st.sidebar.checkbox("⏱️ অটো-রিফ্রেশ চালু রাখুন", value=True)
 if auto_refresh:
-    refresh_interval = st.sidebar.slider("রিফ্রেশ ইন্টারভাল (সেকেন্ড):", min_value=5, max_value=30, value=10)
+    refresh_interval = st.sidebar.slider("রিফ্রেশ ইন্টারভাল (সেকেন্ড):", min_value=10, max_value=60, value=15)
     if HAS_AUTOREFRESH:
         st_autorefresh(interval=refresh_interval * 1000, key="datarefresh")
 
@@ -68,8 +68,15 @@ else:
     ]
 
 # ===================================================
-# 🧠 EARLY BREAKOUT PRICE ACTION ENGINE
+# 🧠 STRICT PRICE ACTION & MULTI-FILTER ENGINE
 # ===================================================
+def calculate_rsi(series, period=14):
+    delta = series.diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+    rs = gain / loss
+    return 100 - (100 / (1 + rs))
+
 def get_data_and_signal(target_info, m_type, tf):
     ticker = target_info['ticker']
     strike_step = target_info['step']
@@ -78,22 +85,27 @@ def get_data_and_signal(target_info, m_type, tf):
 
     try:
         ticker_obj = yf.Ticker(ticker)
-        df = ticker_obj.history(period="1d", interval="1m", auto_adjust=True)
-
-        if df is None or df.empty or len(df) < 5:
-            return None
+        df = None
 
         if tf == "3m":
-            df = df.resample('3min').agg({
-                'Open': 'first', 'High': 'max', 'Low': 'min', 'Close': 'last', 'Volume': 'sum'
-            }).dropna()
-        elif tf == "5m":
-            df = df.resample('5min').agg({
-                'Open': 'first', 'High': 'max', 'Low': 'min', 'Close': 'last', 'Volume': 'sum'
-            }).dropna()
+            df_1m = ticker_obj.history(period="1d", interval="1m", auto_adjust=True)
+            if df_1m is not None and not df_1m.empty and len(df_1m) >= 3:
+                df = df_1m.resample('3min').agg({
+                    'Open': 'first',
+                    'High': 'max',
+                    'Low': 'min',
+                    'Close': 'last',
+                    'Volume': 'sum'
+                }).dropna()
+        
+        if df is None or df.empty or len(df) < 15:
+            df = ticker_obj.history(period="1d", interval="5m", auto_adjust=True)
+
+        if df is None or df.empty or len(df) < 15:
+            return None
 
         # MCX Currency Adjustment
-        usd_inr = 94.00  
+        usd_inr = 95.98  
         duty_tax = 1.15   
 
         if asset_type == "gold":
@@ -106,44 +118,66 @@ def get_data_and_signal(target_info, m_type, tf):
             factor = usd_inr
             df['Close'] *= factor; df['Open'] *= factor; df['High'] *= factor; df['Low'] *= factor
 
+        # --------------------------------------------------
+        # TECHNICAL INDICATORS CALCULATION
+        # --------------------------------------------------
+        df['EMA_20'] = df['Close'].ewm(span=20, adjust=False).mean()
+        df['RSI'] = calculate_rsi(df['Close'], period=14)
+        df['Avg_Vol'] = df['Volume'].rolling(window=10).mean()
+
         latest = df.iloc[-1]
         
-        # দ্রুত এন্ট্রির জন্য বিগত ৩টি ক্যান্ডেলের হাই ও লো হাইলাইট
-        past_3_high = df['High'].iloc[-4:-1].max()
-        past_3_low = df['Low'].iloc[-4:-1].min()
+        # ১০ ক্যান্ডেলের হাই ও লো রেঞ্জ (Strict Range Filter)
+        past_10_high = df['High'].iloc[-11:-1].max()
+        past_10_low = df['Low'].iloc[-11:-1].min()
 
         price = round(latest['Close'], 2)
+        rsi_val = round(latest['RSI'], 1) if not np.isnan(latest['RSI']) else 50.0
+        ema_val = latest['EMA_20']
         
         ist_tz = pytz.timezone('Asia/Kolkata')
         candle_time = latest.name.strftime("%H:%M") if latest.name.tzinfo is None else latest.name.tz_convert(ist_tz).strftime("%H:%M")
 
-        is_green = latest['Close'] >= latest['Open']
+        is_green = latest['Close'] > latest['Open']
         is_red = latest['Close'] < latest['Open']
 
-        signal = "NEUTRAL"
-        status_text = "⚪ মার্কেট শান্ত / সাইডওয়েজ"
-        color = "gray"
+        # Body & Wick Calculations
+        body_range = abs(latest['Close'] - latest['Open'])
+        upper_wick = latest['High'] - max(latest['Close'], latest['Open'])
+        lower_wick = min(latest['Close'], latest['Open']) - latest['Low']
 
-        # EARLY ENTRY TRIGGER (প্রাইজ আগের হাই/লো ক্রস করার সাথে সাথেই সিগন্যাল)
-        if (price > past_3_high) and is_green:
-            signal = "🚀 EARLY CALL BUY (CE)" if "Indices" in m_type else "🚀 EARLY BULLISH BREAKOUT"
-            status_text = f"⚡ দ্রুত এন্ট্রি! বুলিশ ব্রেকআউট শুরু হয়েছে ({candle_time})"
+        # Volume Filter (1.2x of 10-period avg volume)
+        vol_spike = latest['Volume'] >= (latest['Avg_Vol'] * 1.2) if latest['Avg_Vol'] > 0 else True
+
+        signal = "WAIT & WATCH"
+        status_text = "⚠️ মার্কেট সাইডওয়েজ বা কনসোলিডেশনে আছে"
+        color = "orange"
+
+        # --------------------------------------------------
+        # ULTRA STRICT SIGNAL LOGIC (ALL CONDITIONS MUST MATCH)
+        # --------------------------------------------------
+        
+        # CONFIRMED CALL BUY / BULLISH BREAKOUT
+        if (price > past_10_high) and is_green and (price > ema_val) and (rsi_val > 52) and vol_spike and (upper_wick < body_range * 0.4):
+            signal = "🚀 CONFIRMED CALL BUY (CE)" if "Indices" in m_type else "🚀 BULLISH BREAKOUT"
+            status_text = f"🔥 স্ট্রং ১০-ক্যান্ডেল ব্রেকআউট ও ভলিউম প্লাস! ({candle_time})"
             color = "green"
 
-        elif (price < past_3_low) and is_red:
-            signal = "🔻 EARLY PUT BUY (PE)" if "Indices" in m_type else "🔻 EARLY BEARISH BREAKDOWN"
-            status_text = f"⚡ দ্রুত এন্ট্রি! বিয়ারিশ ব্রেকডাউন শুরু হয়েছে ({candle_time})"
+        # CONFIRMED PUT BUY / BEARISH BREAKDOWN
+        elif (price < past_10_low) and is_red and (price < ema_val) and (rsi_val < 48) and vol_spike and (lower_wick < body_range * 0.4):
+            signal = "🔻 CONFIRMED PUT BUY (PE)" if "Indices" in m_type else "🔻 BEARISH BREAKDOWN"
+            status_text = f"🔥 স্ট্রং ১০-ক্যান্ডেল ব্রেকডাউন ও সেলিং প্রেসার! ({candle_time})"
             color = "red"
 
         else:
             signal = "WAIT & WATCH"
-            status_text = "⚠️ উপযুক্ত মোমেন্টামের অপেক্ষা করুন"
+            status_text = "⚠️ ফেকআউট/নোয়েজ এড়াতে কোনো নো ট্রেড জোন"
             color = "orange"
 
         # টার্গেট ও স্টপলস
-        target_pct_1 = 0.004
-        target_pct_2 = 0.008
-        sl_pct = 0.003
+        target_pct_1 = 0.005
+        target_pct_2 = 0.010
+        sl_pct = 0.0035
 
         sl, target1, target2 = 0.0, 0.0, 0.0
         if color == "green":
@@ -161,12 +195,13 @@ def get_data_and_signal(target_info, m_type, tf):
 
         option_suggestion = ""
         if color == "green" and "Indices" in m_type:
-            option_suggestion = f"💡 **Suggested Strike:** ITM {itm_ce} CE | ATM {atm_strike} CE"
+            option_suggestion = f"💡 **Recommended:** ITM {itm_ce} CE | ATM {atm_strike} CE"
         elif color == "red" and "Indices" in m_type:
-            option_suggestion = f"💡 **Suggested Strike:** ITM {itm_pe} PE | ATM {atm_strike} PE"
+            option_suggestion = f"💡 **Recommended:** ITM {itm_pe} PE | ATM {atm_strike} PE"
 
         return {
             'price': price,
+            'rsi': rsi_val,
             'signal': signal,
             'status_text': status_text,
             'color': color,
@@ -194,7 +229,7 @@ for idx, item in enumerate(targets):
             elif data['color'] == 'orange': st.warning(f"### {data['signal']}\n\n{data['status_text']}")
             else: st.info(f"### {data['signal']}\n\n{data['status_text']}")
 
-            st.metric("লাইভ প্রাইস", f"₹{data['price']:,.2f}")
+            st.metric("লাইভ প্রাইস", f"₹{data['price']:,.2f}", f"RSI: {data['rsi']}")
 
             st.write(f"**Candle Time:** {data['candle_time']}")
 
