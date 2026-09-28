@@ -6,7 +6,7 @@ import datetime
 import pytz
 
 # ১. পেজ কনফিগারেশন
-st.set_page_config(page_title="Price Action Multi-Indicator Scanner Pro", layout="wide")
+st.set_page_config(page_title="Price Action Smart RSI Scanner", layout="wide")
 
 # ২. অটো রিফ্রেশ
 try:
@@ -23,7 +23,7 @@ if 'signal_history_mcx' not in st.session_state:
 if 'last_logged_time' not in st.session_state:
     st.session_state.last_logged_time = {}
 
-st.title("🎯 High-Precision Price Action & Dashboard Pro")
+st.title("🎯 Smart RSI Direction & Breakout Scanner Pro")
 
 # ==========================================
 # ⚙️ SIDEBAR CONFIGURATION
@@ -68,7 +68,7 @@ else:
     ]
 
 # ===================================================
-# 🧠 INDICATORS & PRICE ACTION ENGINE
+# 🧠 SMART RSI DIRECTION & PRICE ACTION ENGINE
 # ===================================================
 def calculate_rsi(series, period=14):
     delta = series.diff()
@@ -135,6 +135,7 @@ def get_data_and_signal(target_info, m_type, tf):
 
         latest = df.iloc[-1]
         prev = df.iloc[-2]
+        prev2 = df.iloc[-3]
         
         past_10_high = df['High'].iloc[-11:-1].max()
         past_10_low = df['Low'].iloc[-11:-1].min()
@@ -143,12 +144,17 @@ def get_data_and_signal(target_info, m_type, tf):
         price_change = round(latest['Close'] - prev['Close'], 2)
         pct_change = round((price_change / prev['Close']) * 100, 2)
 
-        rsi_val = round(latest['RSI'], 1) if not np.isnan(latest['RSI']) else 50.0
+        rsi_curr = round(latest['RSI'], 1) if not np.isnan(latest['RSI']) else 50.0
+        rsi_prev = round(prev['RSI'], 1) if not np.isnan(prev['RSI']) else 50.0
+        
+        # RSI Slope / Direction Logic (নিচ থেকে ওঠা বা উপর থেকে পড়া)
+        rsi_rising = rsi_curr > rsi_prev
+        rsi_falling = rsi_curr < rsi_prev
+
         ema_val = latest['EMA_20']
         macd_val = latest['MACD']
         macd_sig_val = latest['MACD_Signal']
         
-        # Vol Multiplier
         vol_ratio = round(latest['Volume'] / latest['Avg_Vol'], 1) if latest['Avg_Vol'] > 0 else 1.0
 
         ist_tz = pytz.timezone('Asia/Kolkata')
@@ -162,8 +168,6 @@ def get_data_and_signal(target_info, m_type, tf):
         lower_wick = min(latest['Close'], latest['Open']) - latest['Low']
 
         vol_spike = vol_ratio >= 1.2
-
-        # Status Indicators
         is_above_ema = price > ema_val
         is_macd_bullish = macd_val > macd_sig_val
 
@@ -172,16 +176,23 @@ def get_data_and_signal(target_info, m_type, tf):
         color = "orange"
 
         # --------------------------------------------------
-        # STRICT SIGNAL LOGIC
+        # SMART RSI REVERSAL & BREAKOUT LOGIC
         # --------------------------------------------------
-        if (price > past_10_high) and is_green and is_above_ema and (rsi_val > 52) and is_macd_bullish and vol_spike and (upper_wick < body_range * 0.4):
+        # CALL BUY Condition:
+        # 1. RSI বাড়ছে (rsi_rising)
+        # 2. RSI ওভারবট নয় (rsi_curr < 68) - অলরেডি উঠে যাওয়া মার্কেটে বাই নিষিদ্ধ
+        # 3. ১০-ক্যান্ডেল হাই ভেঙেছে অথবা নিচ থেকে স্ট্রং রিভার্সাল দিচ্ছে
+        if (price > past_10_high or (rsi_prev < 40 and rsi_curr >= 42)) and is_green and rsi_rising and (rsi_curr < 68) and vol_spike and (upper_wick < body_range * 0.4):
             signal = "🚀 CONFIRMED CALL BUY (CE)" if "Indices" in m_type else "🚀 BULLISH BREAKOUT"
-            status_text = f"🔥 স্ট্রং ১০-ক্যান্ডেল ব্রেকআউট ও মাল্টি-ইন্ডিকেটর কনফার্মড! ({candle_time})"
+            status_text = f"🔥 নিচ থেকে আরএসআই মোমেন্টাম ও বায়ার্স এন্ট্রি! ({candle_time})"
             color = "green"
 
-        elif (price < past_10_low) and is_red and (not is_above_ema) and (rsi_val < 48) and (not is_macd_bullish) and vol_spike and (lower_wick < body_range * 0.4):
+        # PUT BUY Condition:
+        # 1. RSI কমছে (rsi_falling)
+        # 2. RSI ওভারসোল্ড নয় (rsi_curr > 32)
+        elif (price < past_10_low or (rsi_prev > 60 and rsi_curr <= 58)) and is_red and rsi_falling and (rsi_curr > 32) and vol_spike and (lower_wick < body_range * 0.4):
             signal = "🔻 CONFIRMED PUT BUY (PE)" if "Indices" in m_type else "🔻 BEARISH BREAKDOWN"
-            status_text = f"🔥 স্ট্রং ১০-ক্যান্ডেল ব্রেকডাউন ও সেলিং প্রেসার! ({candle_time})"
+            status_text = f"🔥 উপর থেকে আরএসআই সেলিং ড্রপ ও সেলার্স প্রেসার! ({candle_time})"
             color = "red"
 
         # Targets & SL
@@ -213,7 +224,8 @@ def get_data_and_signal(target_info, m_type, tf):
             'price': price,
             'change': price_change,
             'pct_change': pct_change,
-            'rsi': rsi_val,
+            'rsi': rsi_curr,
+            'rsi_rising': rsi_rising,
             'is_above_ema': is_above_ema,
             'is_macd_bullish': is_macd_bullish,
             'vol_ratio': vol_ratio,
@@ -244,7 +256,6 @@ for idx, item in enumerate(targets):
             elif data['color'] == 'orange': st.warning(f"### {data['signal']}\n\n{data['status_text']}")
             else: st.info(f"### {data['signal']}\n\n{data['status_text']}")
 
-            # Price & Change Metric
             st.metric(
                 label="লাইভ প্রাইস", 
                 value=f"₹{data['price']:,.2f}", 
@@ -253,40 +264,37 @@ for idx, item in enumerate(targets):
 
             st.write(f"⏱️ **Time:** {data['candle_time']}")
 
-            # --------------------------------------------------
-            # MULTI-INDICATOR METRICS DASHBOARD (BADGES)
-            # --------------------------------------------------
-            st.markdown("##### 📊 ইন্ডিকেটর স্ট্যাটাস:")
+            st.markdown("##### 📊 স্মার্ট ইন্ডিকেটর স্ট্যাটাস:")
             
-            # 1. RSI Badge
-            if data['rsi'] >= 55:
-                st.markdown(f"🟢 **RSI:** `{data['rsi']}` (Bullish)")
-            elif data['rsi'] <= 45:
-                st.markdown(f"🔴 **RSI:** `{data['rsi']}` (Bearish)")
+            # RSI Status with Direction Arrow
+            rsi_arrow = "↗️ Rising" if data['rsi_rising'] else "↘️ Falling"
+            if data['rsi'] >= 68:
+                st.markdown(f"🔴 **RSI:** `{data['rsi']}` ({rsi_arrow} - Overbought ⚠️)")
+            elif data['rsi'] <= 32:
+                st.markdown(f"🟢 **RSI:** `{data['rsi']}` ({rsi_arrow} - Oversold Zone)")
+            elif data['rsi_rising']:
+                st.markdown(f"🟢 **RSI:** `{data['rsi']}` ({rsi_arrow})")
             else:
-                st.markdown(f"⚪ **RSI:** `{data['rsi']}` (Neutral)")
+                st.markdown(f"🔴 **RSI:** `{data['rsi']}` ({rsi_arrow})")
 
-            # 2. MACD Badge
+            # MACD
             if data['is_macd_bullish']:
                 st.markdown("🟢 **MACD:** `Bullish Cross`")
             else:
                 st.markdown("🔴 **MACD:** `Bearish Cross`")
 
-            # 3. EMA 20 Trend Badge
+            # 20-EMA
             if data['is_above_ema']:
                 st.markdown("🟢 **20-EMA:** `Price Above`")
             else:
                 st.markdown("🔴 **20-EMA:** `Price Below`")
 
-            # 4. Volume Spike Badge
+            # Volume
             if data['vol_ratio'] >= 1.2:
                 st.markdown(f"🟢 **Volume:** `{data['vol_ratio']}x Spike`")
             else:
                 st.markdown(f"⚪ **Volume:** `{data['vol_ratio']}x Normal`")
 
-            # --------------------------------------------------
-            # TARGETS & SL
-            # --------------------------------------------------
             is_confirmed_signal = data['color'] in ['green', 'red']
 
             if is_confirmed_signal:
