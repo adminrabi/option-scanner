@@ -6,7 +6,7 @@ import datetime
 import pytz
 
 # ১. পেজ কনফিগারেশন
-st.set_page_config(page_title="Price Action Breakout Scanner Pro", layout="wide")
+st.set_page_config(page_title="Price Action Multi-Indicator Scanner Pro", layout="wide")
 
 # ২. অটো রিফ্রেশ
 try:
@@ -23,7 +23,7 @@ if 'signal_history_mcx' not in st.session_state:
 if 'last_logged_time' not in st.session_state:
     st.session_state.last_logged_time = {}
 
-st.title("🎯 High-Precision Price Action & Breakout Scanner Pro")
+st.title("🎯 High-Precision Price Action & Dashboard Pro")
 
 # ==========================================
 # ⚙️ SIDEBAR CONFIGURATION
@@ -38,7 +38,7 @@ st.sidebar.markdown("---")
 timeframe = st.sidebar.selectbox(
     "⏱️ ক্যান্ডেল টাইমফ্রেম:",
     ["3m", "5m"],
-    index=1  # Default to 5m for safer signals
+    index=1
 )
 
 auto_refresh = st.sidebar.checkbox("⏱️ অটো-রিফ্রেশ চালু রাখুন", value=True)
@@ -68,7 +68,7 @@ else:
     ]
 
 # ===================================================
-# 🧠 STRICT PRICE ACTION & MULTI-FILTER ENGINE
+# 🧠 INDICATORS & PRICE ACTION ENGINE
 # ===================================================
 def calculate_rsi(series, period=14):
     delta = series.diff()
@@ -76,6 +76,13 @@ def calculate_rsi(series, period=14):
     loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
     rs = gain / loss
     return 100 - (100 / (1 + rs))
+
+def calculate_macd(series, fast=12, slow=26, signal=9):
+    exp1 = series.ewm(span=fast, adjust=False).mean()
+    exp2 = series.ewm(span=slow, adjust=False).mean()
+    macd_line = exp1 - exp2
+    signal_line = macd_line.ewm(span=signal, adjust=False).mean()
+    return macd_line, signal_line
 
 def get_data_and_signal(target_info, m_type, tf):
     ticker = target_info['ticker']
@@ -98,10 +105,10 @@ def get_data_and_signal(target_info, m_type, tf):
                     'Volume': 'sum'
                 }).dropna()
         
-        if df is None or df.empty or len(df) < 15:
+        if df is None or df.empty or len(df) < 20:
             df = ticker_obj.history(period="1d", interval="5m", auto_adjust=True)
 
-        if df is None or df.empty or len(df) < 15:
+        if df is None or df.empty or len(df) < 20:
             return None
 
         # MCX Currency Adjustment
@@ -119,62 +126,65 @@ def get_data_and_signal(target_info, m_type, tf):
             df['Close'] *= factor; df['Open'] *= factor; df['High'] *= factor; df['Low'] *= factor
 
         # --------------------------------------------------
-        # TECHNICAL INDICATORS CALCULATION
+        # TECHNICAL INDICATORS
         # --------------------------------------------------
         df['EMA_20'] = df['Close'].ewm(span=20, adjust=False).mean()
         df['RSI'] = calculate_rsi(df['Close'], period=14)
+        df['MACD'], df['MACD_Signal'] = calculate_macd(df['Close'])
         df['Avg_Vol'] = df['Volume'].rolling(window=10).mean()
 
         latest = df.iloc[-1]
+        prev = df.iloc[-2]
         
-        # ১০ ক্যান্ডেলের হাই ও লো রেঞ্জ (Strict Range Filter)
         past_10_high = df['High'].iloc[-11:-1].max()
         past_10_low = df['Low'].iloc[-11:-1].min()
 
         price = round(latest['Close'], 2)
+        price_change = round(latest['Close'] - prev['Close'], 2)
+        pct_change = round((price_change / prev['Close']) * 100, 2)
+
         rsi_val = round(latest['RSI'], 1) if not np.isnan(latest['RSI']) else 50.0
         ema_val = latest['EMA_20']
+        macd_val = latest['MACD']
+        macd_sig_val = latest['MACD_Signal']
         
+        # Vol Multiplier
+        vol_ratio = round(latest['Volume'] / latest['Avg_Vol'], 1) if latest['Avg_Vol'] > 0 else 1.0
+
         ist_tz = pytz.timezone('Asia/Kolkata')
         candle_time = latest.name.strftime("%H:%M") if latest.name.tzinfo is None else latest.name.tz_convert(ist_tz).strftime("%H:%M")
 
         is_green = latest['Close'] > latest['Open']
         is_red = latest['Close'] < latest['Open']
 
-        # Body & Wick Calculations
         body_range = abs(latest['Close'] - latest['Open'])
         upper_wick = latest['High'] - max(latest['Close'], latest['Open'])
         lower_wick = min(latest['Close'], latest['Open']) - latest['Low']
 
-        # Volume Filter (1.2x of 10-period avg volume)
-        vol_spike = latest['Volume'] >= (latest['Avg_Vol'] * 1.2) if latest['Avg_Vol'] > 0 else True
+        vol_spike = vol_ratio >= 1.2
+
+        # Status Indicators
+        is_above_ema = price > ema_val
+        is_macd_bullish = macd_val > macd_sig_val
 
         signal = "WAIT & WATCH"
         status_text = "⚠️ মার্কেট সাইডওয়েজ বা কনসোলিডেশনে আছে"
         color = "orange"
 
         # --------------------------------------------------
-        # ULTRA STRICT SIGNAL LOGIC (ALL CONDITIONS MUST MATCH)
+        # STRICT SIGNAL LOGIC
         # --------------------------------------------------
-        
-        # CONFIRMED CALL BUY / BULLISH BREAKOUT
-        if (price > past_10_high) and is_green and (price > ema_val) and (rsi_val > 52) and vol_spike and (upper_wick < body_range * 0.4):
+        if (price > past_10_high) and is_green and is_above_ema and (rsi_val > 52) and is_macd_bullish and vol_spike and (upper_wick < body_range * 0.4):
             signal = "🚀 CONFIRMED CALL BUY (CE)" if "Indices" in m_type else "🚀 BULLISH BREAKOUT"
-            status_text = f"🔥 স্ট্রং ১০-ক্যান্ডেল ব্রেকআউট ও ভলিউম প্লাস! ({candle_time})"
+            status_text = f"🔥 স্ট্রং ১০-ক্যান্ডেল ব্রেকআউট ও মাল্টি-ইন্ডিকেটর কনফার্মড! ({candle_time})"
             color = "green"
 
-        # CONFIRMED PUT BUY / BEARISH BREAKDOWN
-        elif (price < past_10_low) and is_red and (price < ema_val) and (rsi_val < 48) and vol_spike and (lower_wick < body_range * 0.4):
+        elif (price < past_10_low) and is_red and (not is_above_ema) and (rsi_val < 48) and (not is_macd_bullish) and vol_spike and (lower_wick < body_range * 0.4):
             signal = "🔻 CONFIRMED PUT BUY (PE)" if "Indices" in m_type else "🔻 BEARISH BREAKDOWN"
             status_text = f"🔥 স্ট্রং ১০-ক্যান্ডেল ব্রেকডাউন ও সেলিং প্রেসার! ({candle_time})"
             color = "red"
 
-        else:
-            signal = "WAIT & WATCH"
-            status_text = "⚠️ ফেকআউট/নোয়েজ এড়াতে কোনো নো ট্রেড জোন"
-            color = "orange"
-
-        # টার্গেট ও স্টপলস
+        # Targets & SL
         target_pct_1 = 0.005
         target_pct_2 = 0.010
         sl_pct = 0.0035
@@ -201,7 +211,12 @@ def get_data_and_signal(target_info, m_type, tf):
 
         return {
             'price': price,
+            'change': price_change,
+            'pct_change': pct_change,
             'rsi': rsi_val,
+            'is_above_ema': is_above_ema,
+            'is_macd_bullish': is_macd_bullish,
+            'vol_ratio': vol_ratio,
             'signal': signal,
             'status_text': status_text,
             'color': color,
@@ -229,10 +244,49 @@ for idx, item in enumerate(targets):
             elif data['color'] == 'orange': st.warning(f"### {data['signal']}\n\n{data['status_text']}")
             else: st.info(f"### {data['signal']}\n\n{data['status_text']}")
 
-            st.metric("লাইভ প্রাইস", f"₹{data['price']:,.2f}", f"RSI: {data['rsi']}")
+            # Price & Change Metric
+            st.metric(
+                label="লাইভ প্রাইস", 
+                value=f"₹{data['price']:,.2f}", 
+                delta=f"{data['change']:+.2f} ({data['pct_change']:+.2f}%)"
+            )
 
-            st.write(f"**Candle Time:** {data['candle_time']}")
+            st.write(f"⏱️ **Time:** {data['candle_time']}")
 
+            # --------------------------------------------------
+            # MULTI-INDICATOR METRICS DASHBOARD (BADGES)
+            # --------------------------------------------------
+            st.markdown("##### 📊 ইন্ডিকেটর স্ট্যাটাস:")
+            
+            # 1. RSI Badge
+            if data['rsi'] >= 55:
+                st.markdown(f"🟢 **RSI:** `{data['rsi']}` (Bullish)")
+            elif data['rsi'] <= 45:
+                st.markdown(f"🔴 **RSI:** `{data['rsi']}` (Bearish)")
+            else:
+                st.markdown(f"⚪ **RSI:** `{data['rsi']}` (Neutral)")
+
+            # 2. MACD Badge
+            if data['is_macd_bullish']:
+                st.markdown("🟢 **MACD:** `Bullish Cross`")
+            else:
+                st.markdown("🔴 **MACD:** `Bearish Cross`")
+
+            # 3. EMA 20 Trend Badge
+            if data['is_above_ema']:
+                st.markdown("🟢 **20-EMA:** `Price Above`")
+            else:
+                st.markdown("🔴 **20-EMA:** `Price Below`")
+
+            # 4. Volume Spike Badge
+            if data['vol_ratio'] >= 1.2:
+                st.markdown(f"🟢 **Volume:** `{data['vol_ratio']}x Spike`")
+            else:
+                st.markdown(f"⚪ **Volume:** `{data['vol_ratio']}x Normal`")
+
+            # --------------------------------------------------
+            # TARGETS & SL
+            # --------------------------------------------------
             is_confirmed_signal = data['color'] in ['green', 'red']
 
             if is_confirmed_signal:
