@@ -189,20 +189,30 @@ def get_data_and_signal(target_info, m_type, tf):
         # --------------------------------------------------
         # SMART RSI REVERSAL & BREAKOUT LOGIC
         # --------------------------------------------------
-        # CALL BUY Condition (Early Entry & Fast Trigger)
-        if (((price > past_3_high and rsi_curr < 65) or (rsi_prev < 42 and rsi_curr >= 43)) 
-            and rsi_rising and (rsi_curr < 68) and vol_spike):
+
+        # BREAKOUT & MOMENTUM CALCULATIONS
+        past_3_high = df['High'].iloc[-4:-1].max()
+        past_3_low = df['Low'].iloc[-4:-1].min()
+        
+        # Fast Momentum Check (RSI 3-Point Jump)
+        rsi_jump_up = (rsi_curr - rsi_prev) >= 2.5
+        rsi_jump_down = (rsi_prev - rsi_curr) >= 2.5
+
+        # CALL BUY Condition (No Sideways Entry & Early Surge)
+        if (((price > past_3_high) or rsi_jump_up) 
+            and (rsi_curr >= 45 and rsi_curr < 65) 
+            and rsi_rising and vol_spike):
             signal = "🚀 CONFIRMED CALL BUY (CE)" if "Indices" in m_type else "🚀 BULLISH BREAKOUT"
             status_text = f"🔥 নিচ থেকে আরএসআই মোমেন্টাম ও বায়ার্স এন্ট্রি! ({candle_time})"
             color = "green"
 
-        # PUT BUY Condition (Early Breakdown & Fast Reversal)
-        elif (((price < past_3_low and rsi_curr > 35) or (rsi_prev > 58 and rsi_curr <= 57)) 
-              and rsi_falling and (rsi_curr > 32) and vol_spike):
+        # PUT BUY Condition (No Sideways Entry & Early Drop)
+        elif (((price < past_3_low) or rsi_jump_down) 
+              and (rsi_curr <= 55 and rsi_curr > 35) 
+              and rsi_falling and vol_spike):
             signal = "🔻 CONFIRMED PUT BUY (PE)" if "Indices" in m_type else "🔻 BEARISH BREAKDOWN"
             status_text = f"🔥 উপর থেকে আরএসআই সেলিং ড্রপ ও সেলার্স প্রেসার! ({candle_time})"
             color = "red"
-
 
         
         # Targets & SL
