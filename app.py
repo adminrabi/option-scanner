@@ -148,8 +148,8 @@ def get_data_and_signal(target_info, m_type, tf):
         prev = df.iloc[-2]
         prev2 = df.iloc[-3]
         
-        past_5_high = df['High'].iloc[-11:-1].max()
-        past_5_low = df['Low'].iloc[-11:-1].min()
+        past_5_high = df['High'].iloc[-6:-1].max()
+        past_5_low = df['Low'].iloc[-6:-1].min()
 
         price = round(latest['Close'], 2)
         price_change = round(latest['Close'] - prev['Close'], 2)
