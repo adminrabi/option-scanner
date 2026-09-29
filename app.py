@@ -201,7 +201,8 @@ def get_data_and_signal(target_info, m_type, tf):
             signal = "🔻 CONFIRMED PUT BUY (PE)" if "Indices" in m_type else "🔻 BEARISH BREAKDOWN"
             status_text = f"🔥 উপর থেকে আরএসআই সেলিং ড্রপ ও সেলার্স প্রেসার! ({candle_time})"
             color = "red"
-                # Targets & SL
+            
+        # Targets & SL
         target_pct_1 = 0.005
         target_pct_2 = 0.010
         sl_pct = 0.0035
