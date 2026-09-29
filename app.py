@@ -193,7 +193,7 @@ def get_data_and_signal(target_info, m_type, tf):
         # 1. RSI বাড়ছে (rsi_rising)
         # 2. RSI ওভারবট নয় (rsi_curr < 68) - অলরেডি উঠে যাওয়া মার্কেটে বাই নিষিদ্ধ
         # 3. ১০-ক্যান্ডেল হাই ভেঙেছে অথবা নিচ থেকে স্ট্রং রিভার্সাল দিচ্ছে
-        if (price > past_10_high or (rsi_prev < 40 and rsi_curr >= 42)) and is_green and rsi_rising and (rsi_curr < 68) and vol_spike and (upper_wick < body_range * 0.4):
+        if (price > past_5_high or (rsi_prev < 40 and rsi_curr >= 42)) and is_green and rsi_rising and (rsi_curr < 68) and vol_spike and (upper_wick < body_range * 0.4):
             signal = "🚀 CONFIRMED CALL BUY (CE)" if "Indices" in m_type else "🚀 BULLISH BREAKOUT"
             status_text = f"🔥 নিচ থেকে আরএসআই মোমেন্টাম ও বায়ার্স এন্ট্রি! ({candle_time})"
             color = "green"
@@ -201,7 +201,7 @@ def get_data_and_signal(target_info, m_type, tf):
         # PUT BUY Condition:
         # 1. RSI কমছে (rsi_falling)
         # 2. RSI ওভারসোল্ড নয় (rsi_curr > 32)
-        elif (price < past_10_low or (rsi_prev > 60 and rsi_curr <= 58)) and is_red and rsi_falling and (rsi_curr > 32) and vol_spike and (lower_wick < body_range * 0.4):
+        elif (price < past_5_low or (rsi_prev > 60 and rsi_curr <= 58)) and is_red and rsi_falling and (rsi_curr > 32) and vol_spike and (lower_wick < body_range * 0.4):
             signal = "🔻 CONFIRMED PUT BUY (PE)" if "Indices" in m_type else "🔻 BEARISH BREAKDOWN"
             status_text = f"🔥 উপর থেকে আরএসআই সেলিং ড্রপ ও সেলার্স প্রেসার! ({candle_time})"
             color = "red"
