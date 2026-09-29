@@ -148,8 +148,8 @@ def get_data_and_signal(target_info, m_type, tf):
         prev = df.iloc[-2]
         prev2 = df.iloc[-3]
         
-        past_5_high = df['High'].iloc[-6:-1].max()
-        past_5_low = df['Low'].iloc[-6:-1].min()
+        past_3_high = df['High'].iloc[-4:-1].max()
+        past_3_low = df['Low'].iloc[-4:-1].min()
 
         price = round(latest['Close'], 2)
         price_change = round(latest['Close'] - prev['Close'], 2)
@@ -191,13 +191,13 @@ def get_data_and_signal(target_info, m_type, tf):
         # --------------------------------------------------
 
         # CALL BUY Condition
-        if ((price > past_5_high) or (rsi_prev < 30 and rsi_curr >= 31)) and rsi_rising and (rsi_curr < 70) and vol_spike:
+        if ((price > past_3_high) or (rsi_prev < 30 and rsi_curr >= 31)) and rsi_rising and (rsi_curr < 70) and vol_spike:
             signal = "🚀 CONFIRMED CALL BUY (CE)" if "Indices" in m_type else "🚀 BULLISH BREAKOUT"
             status_text = f"🔥 নিচ থেকে আরএসআই মোমেন্টাম ও বায়ার্স এন্ট্রি! ({candle_time})"
             color = "green"
 
         # PUT BUY Condition
-        elif ((price < past_5_low) or (rsi_prev > 40 and rsi_curr <= 39)) and rsi_falling and (rsi_curr > 30) and vol_spike:
+        elif ((price < past_3_low) or (rsi_prev > 40 and rsi_curr <= 39)) and rsi_falling and (rsi_curr > 30) and vol_spike:
             signal = "🔻 CONFIRMED PUT BUY (PE)" if "Indices" in m_type else "🔻 BEARISH BREAKDOWN"
             status_text = f"🔥 উপর থেকে আরএসআই সেলিং ড্রপ ও সেলার্স প্রেসার! ({candle_time})"
             color = "red"
