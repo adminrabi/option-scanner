@@ -189,9 +189,6 @@ def get_data_and_signal(target_info, m_type, tf):
         # --------------------------------------------------
         # SMART RSI REVERSAL & BREAKOUT LOGIC
         # --------------------------------------------------
-        # Volume Filter Calculation
-        vol_ratio = (curr_vol / avg_vol) if avg_vol > 0 else 1.0
-        vol_check = True if "Indices" in m_type else (vol_ratio >= 0.8)
 
         # CALL BUY Condition
         if ((price > past_5_high) or (rsi_prev < 45 and rsi_curr >= 46)) and rsi_rising and (rsi_curr < 70) and vol_spike:
