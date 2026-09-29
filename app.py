@@ -94,9 +94,11 @@ def get_data_and_signal(target_info, m_type, tf):
         ticker_obj = yf.Ticker(ticker)
         df = None
 
-        if tf == "3m":
-            df_1m = ticker_obj.history(period="1d", interval="1m", auto_adjust=True)
-            if df_1m is not None and not df_1m.empty and len(df_1m) >= 3:
+        # ১ মিনিটের ফ্রেশ ডাটা ফেচ (গত ৫ দিনের ডাটা সাপোর্ট সহ)
+        df_1m = ticker_obj.history(period="5d", interval="1m", auto_adjust=True)
+
+        if df_1m is not None and not df_1m.empty and len(df_1m) >= 10:
+            if tf == "3m":
                 df = df_1m.resample('3min').agg({
                     'Open': 'first',
                     'High': 'max',
@@ -104,11 +106,20 @@ def get_data_and_signal(target_info, m_type, tf):
                     'Close': 'last',
                     'Volume': 'sum'
                 }).dropna()
-        
-        if df is None or df.empty or len(df) < 20:
-            df = ticker_obj.history(period="1d", interval="5m", auto_adjust=True)
+            elif tf == "5m":
+                df = df_1m.resample('5min').agg({
+                    'Open': 'first',
+                    'High': 'max',
+                    'Low': 'min',
+                    'Close': 'last',
+                    'Volume': 'sum'
+                }).dropna()
 
-        if df is None or df.empty or len(df) < 20:
+        # যদি ১ মিনিটের ডাটা না পাওয়া যায়, তবে ব্যাকআপ ৫ মিনিটের ডাটা
+        if df is None or df.empty or len(df) < 15:
+            df = ticker_obj.history(period="5d", interval="5m", auto_adjust=True)
+
+        if df is None or df.empty or len(df) < 15:
             return None
 
         # MCX Currency Adjustment
