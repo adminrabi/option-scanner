@@ -189,19 +189,22 @@ def get_data_and_signal(target_info, m_type, tf):
         # --------------------------------------------------
         # SMART RSI REVERSAL & BREAKOUT LOGIC
         # --------------------------------------------------
+        # Volume Filter Calculation
+        vol_ratio = (curr_vol / avg_vol) if avg_vol > 0 else 1.0
+        vol_check = True if "Indices" in m_type else (vol_ratio >= 0.8)
+
         # CALL BUY Condition
-        if ((price > past_5_high) or (rsi_prev < 45 and rsi_curr >= 46)) and rsi_rising and (rsi_curr < 70) and vol_ok:
+        if ((price > past_5_high) or (rsi_prev < 45 and rsi_curr >= 46)) and rsi_rising and (rsi_curr < 70) and vol_check:
             signal = "🚀 CONFIRMED CALL BUY (CE)" if "Indices" in m_type else "🚀 BULLISH BREAKOUT"
             status_text = f"🔥 নিচ থেকে আরএসআই মোমেন্টাম ও বায়ার্স এন্ট্রি! ({candle_time})"
             color = "green"
 
         # PUT BUY Condition
-        elif ((price < past_5_low) or (rsi_prev > 55 and rsi_curr <= 54)) and rsi_falling and (rsi_curr > 30) and vol_ok:
+        elif ((price < past_5_low) or (rsi_prev > 55 and rsi_curr <= 54)) and rsi_falling and (rsi_curr > 30) and vol_check:
             signal = "🔻 CONFIRMED PUT BUY (PE)" if "Indices" in m_type else "🔻 BEARISH BREAKDOWN"
             status_text = f"🔥 উপর থেকে আরএসআই সেলিং ড্রপ ও সেলার্স প্রেসার! ({candle_time})"
             color = "red"
-
-        # Targets & SL
+                # Targets & SL
         target_pct_1 = 0.005
         target_pct_2 = 0.010
         sl_pct = 0.0035
