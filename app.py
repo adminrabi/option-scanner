@@ -38,12 +38,12 @@ st.sidebar.markdown("---")
 timeframe = st.sidebar.selectbox(
     "⏱️ ক্যান্ডেল টাইমফ্রেম:",
     ["3m", "5m"],
-    index=1
+    index=0
 )
 
 auto_refresh = st.sidebar.checkbox("⏱️ অটো-রিফ্রেশ চালু রাখুন", value=True)
 if auto_refresh:
-    refresh_interval = st.sidebar.slider("রিফ্রেশ ইন্টারভাল (সেকেন্ড):", min_value=10, max_value=60, value=15)
+    refresh_interval = st.sidebar.slider("রিফ্রেশ ইন্টারভাল (সেকেন্ড):", min_value=10, max_value=60, value=20)
     if HAS_AUTOREFRESH:
         st_autorefresh(interval=refresh_interval * 1000, key="datarefresh")
 
@@ -94,28 +94,19 @@ def get_data_and_signal(target_info, m_type, tf):
         ticker_obj = yf.Ticker(ticker)
         df = None
 
-        # ১ মিনিটের ফ্রেশ ডাটা ফেচ (গত ৫ দিনের ডাটা সাপোর্ট সহ)
+        # ১ মিনিটের ব্যাকআপ ডাটা থেকে ক্যান্ডেল রিকনস্ট্রাকশন (ফাস্ট ডাটা)
         df_1m = ticker_obj.history(period="5d", interval="1m", auto_adjust=True)
 
         if df_1m is not None and not df_1m.empty and len(df_1m) >= 10:
             if tf == "3m":
                 df = df_1m.resample('3min').agg({
-                    'Open': 'first',
-                    'High': 'max',
-                    'Low': 'min',
-                    'Close': 'last',
-                    'Volume': 'sum'
+                    'Open': 'first', 'High': 'max', 'Low': 'min', 'Close': 'last', 'Volume': 'sum'
                 }).dropna()
             elif tf == "5m":
                 df = df_1m.resample('5min').agg({
-                    'Open': 'first',
-                    'High': 'max',
-                    'Low': 'min',
-                    'Close': 'last',
-                    'Volume': 'sum'
+                    'Open': 'first', 'High': 'max', 'Low': 'min', 'Close': 'last', 'Volume': 'sum'
                 }).dropna()
 
-        # যদি ১ মিনিটের ডাটা না পাওয়া যায়, তবে ব্যাকআপ ৫ মিনিটের ডাটা
         if df is None or df.empty or len(df) < 15:
             df = ticker_obj.history(period="5d", interval="5m", auto_adjust=True)
 
@@ -146,10 +137,9 @@ def get_data_and_signal(target_info, m_type, tf):
 
         latest = df.iloc[-1]
         prev = df.iloc[-2]
-        prev2 = df.iloc[-3]
         
-        past_3_high = df['High'].iloc[-4:-1].max()
-        past_3_low = df['Low'].iloc[-4:-1].min()
+        past_5_high = df['High'].iloc[-6:-1].max()
+        past_5_low = df['Low'].iloc[-6:-1].min()
 
         price = round(latest['Close'], 2)
         price_change = round(latest['Close'] - prev['Close'], 2)
@@ -158,7 +148,6 @@ def get_data_and_signal(target_info, m_type, tf):
         rsi_curr = round(latest['RSI'], 1) if not np.isnan(latest['RSI']) else 50.0
         rsi_prev = round(prev['RSI'], 1) if not np.isnan(prev['RSI']) else 50.0
         
-        # RSI Slope / Direction Logic (নিচ থেকে ওঠা বা উপর থেকে পড়া)
         rsi_rising = rsi_curr > rsi_prev
         rsi_falling = rsi_curr < rsi_prev
 
@@ -166,21 +155,20 @@ def get_data_and_signal(target_info, m_type, tf):
         macd_val = latest['MACD']
         macd_sig_val = latest['MACD_Signal']
         
-        vol_ratio = round(latest['Volume'] / latest['Avg_Vol'], 1) if latest['Avg_Vol'] > 0 else 1.0
+        # Volume Calculation (Index vs Commodity Bypass)
+        vol_ratio = round(latest['Volume'] / latest['Avg_Vol'], 1) if (latest['Avg_Vol'] > 0 and not np.isnan(latest['Avg_Vol'])) else 1.0
+        
+        # ইন্ডেক্সের জন্য ভলিউম ফিল্টার অফ (যেহেতু ইন্ডেক্সে ভলিউম থাকে না)
+        if asset_type == "index":
+            vol_ok = True
+        else:
+            vol_ok = vol_ratio >= 1.0
 
         ist_tz = pytz.timezone('Asia/Kolkata')
         candle_time = latest.name.strftime("%H:%M") if latest.name.tzinfo is None else latest.name.tz_convert(ist_tz).strftime("%H:%M")
 
         is_green = latest['Close'] > latest['Open']
         is_red = latest['Close'] < latest['Open']
-
-        body_range = abs(latest['Close'] - latest['Open'])
-        upper_wick = latest['High'] - max(latest['Close'], latest['Open'])
-        lower_wick = min(latest['Close'], latest['Open']) - latest['Low']
-
-        vol_spike = vol_ratio >= 1.2
-        is_above_ema = price > ema_val
-        is_macd_bullish = macd_val > macd_sig_val
 
         signal = "WAIT & WATCH"
         status_text = "⚠️ মার্কেট সাইডওয়েজ বা কনসোলিডেশনে আছে"
@@ -189,32 +177,18 @@ def get_data_and_signal(target_info, m_type, tf):
         # --------------------------------------------------
         # SMART RSI REVERSAL & BREAKOUT LOGIC
         # --------------------------------------------------
-
-        # BREAKOUT & MOMENTUM CALCULATIONS
-        past_3_high = df['High'].iloc[-4:-1].max()
-        past_3_low = df['Low'].iloc[-4:-1].min()
-        
-        # Fast Momentum Check (RSI 3-Point Jump)
-        rsi_jump_up = (rsi_curr - rsi_prev) >= 2.5
-        rsi_jump_down = (rsi_prev - rsi_curr) >= 2.5
-
-        # CALL BUY Condition (No Sideways Entry & Early Surge)
-        if (((price > past_3_high) or rsi_jump_up) 
-            and (rsi_curr >= 45 and rsi_curr < 65) 
-            and rsi_rising and vol_spike):
+        # CALL BUY (CE) Condition
+        if (price > past_5_high or (rsi_prev < 45 and rsi_curr >= 46)) and is_green and rsi_rising and (rsi_curr < 70) and vol_ok:
             signal = "🚀 CONFIRMED CALL BUY (CE)" if "Indices" in m_type else "🚀 BULLISH BREAKOUT"
             status_text = f"🔥 নিচ থেকে আরএসআই মোমেন্টাম ও বায়ার্স এন্ট্রি! ({candle_time})"
             color = "green"
 
-        # PUT BUY Condition (No Sideways Entry & Early Drop)
-        elif (((price < past_3_low) or rsi_jump_down) 
-              and (rsi_curr <= 55 and rsi_curr > 35) 
-              and rsi_falling and vol_spike):
+        # PUT BUY (PE) Condition
+        elif (price < past_5_low or (rsi_prev > 55 and rsi_curr <= 54)) and is_red and rsi_falling and (rsi_curr > 30) and vol_ok:
             signal = "🔻 CONFIRMED PUT BUY (PE)" if "Indices" in m_type else "🔻 BEARISH BREAKDOWN"
             status_text = f"🔥 উপর থেকে আরএসআই সেলিং ড্রপ ও সেলার্স প্রেসার! ({candle_time})"
             color = "red"
 
-        
         # Targets & SL
         target_pct_1 = 0.005
         target_pct_2 = 0.010
@@ -246,8 +220,8 @@ def get_data_and_signal(target_info, m_type, tf):
             'pct_change': pct_change,
             'rsi': rsi_curr,
             'rsi_rising': rsi_rising,
-            'is_above_ema': is_above_ema,
-            'is_macd_bullish': is_macd_bullish,
+            'is_above_ema': price > ema_val,
+            'is_macd_bullish': macd_val > macd_sig_val,
             'vol_ratio': vol_ratio,
             'signal': signal,
             'status_text': status_text,
@@ -256,7 +230,8 @@ def get_data_and_signal(target_info, m_type, tf):
             'target1': target1,
             'target2': target2,
             'option_suggestion': option_suggestion,
-            'candle_time': candle_time
+            'candle_time': candle_time,
+            'asset_type': asset_type
         }
     except Exception:
         return None
@@ -284,13 +259,13 @@ for idx, item in enumerate(targets):
 
             st.write(f"⏱️ **Time:** {data['candle_time']}")
 
-            st.markdown("##### 📊 স্মার্ট ইন্ডিকেটর স্ট্যাটাস:")
+            st.markdown("##### 📊 ইন্ডিকেটর স্ট্যাটাস:")
             
-            # RSI Status with Direction Arrow
+            # RSI Status
             rsi_arrow = "↗️ Rising" if data['rsi_rising'] else "↘️ Falling"
-            if data['rsi'] >= 68:
+            if data['rsi'] >= 70:
                 st.markdown(f"🔴 **RSI:** `{data['rsi']}` ({rsi_arrow} - Overbought ⚠️)")
-            elif data['rsi'] <= 32:
+            elif data['rsi'] <= 30:
                 st.markdown(f"🟢 **RSI:** `{data['rsi']}` ({rsi_arrow} - Oversold Zone)")
             elif data['rsi_rising']:
                 st.markdown(f"🟢 **RSI:** `{data['rsi']}` ({rsi_arrow})")
@@ -298,22 +273,19 @@ for idx, item in enumerate(targets):
                 st.markdown(f"🔴 **RSI:** `{data['rsi']}` ({rsi_arrow})")
 
             # MACD
-            if data['is_macd_bullish']:
-                st.markdown("🟢 **MACD:** `Bullish Cross`")
-            else:
-                st.markdown("🔴 **MACD:** `Bearish Cross`")
+            if data['is_macd_bullish']: st.markdown("🟢 **MACD:** `Bullish`")
+            else: st.markdown("🔴 **MACD:** `Bearish`")
 
             # 20-EMA
-            if data['is_above_ema']:
-                st.markdown("🟢 **20-EMA:** `Price Above`")
-            else:
-                st.markdown("🔴 **20-EMA:** `Price Below`")
+            if data['is_above_ema']: st.markdown("🟢 **20-EMA:** `Above`")
+            else: st.markdown("🔴 **20-EMA:** `Below`")
 
-            # Volume
-            if data['vol_ratio'] >= 1.2:
-                st.markdown(f"🟢 **Volume:** `{data['vol_ratio']}x Spike`")
+            # Volume Display
+            if data['asset_type'] == "index":
+                st.markdown("⚪ **Volume:** `N/A (Index Price Action)`")
             else:
-                st.markdown(f"⚪ **Volume:** `{data['vol_ratio']}x Normal`")
+                if data['vol_ratio'] >= 1.2: st.markdown(f"🟢 **Volume:** `{data['vol_ratio']}x Spike`")
+                else: st.markdown(f"⚪ **Volume:** `{data['vol_ratio']}x Normal`")
 
             is_confirmed_signal = data['color'] in ['green', 'red']
 
