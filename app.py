@@ -174,29 +174,32 @@ def get_data_and_signal(target_info, m_type, tf):
         status_text = "⚠️ মার্কেট সাইডওয়েজ বা কনসোলিডেশনে আছে"
         color = "orange"
 
-       # SMART RSI REVERSAL & BREAKOUT LOGIC (STABLE & SAFE)
+       # SMART RSI REVERSAL & BREAKOUT LOGIC (HIGH PRECISION FILTER)
         
-        # Vol Spike Safety Check (যাতে ডাটা গায়েব না হয়ে যায়)
-        has_vol = vol_spike if 'vol_spike' in locals() or 'vol_spike' in globals() else True
+        # ১. সেফটি ফিল্টার (অতিরিক্ত নামলে বা উঠলে ভুল সিগন্যাল বন্ধ)
+        rsi_safe_for_call = (rsi_curr < 68) and (rsi_curr > 40)
+        rsi_safe_for_put = (rsi_curr > 32) and (rsi_curr < 60)
 
-        # ১. সেফটি ফিল্টার 
-        rsi_safe_for_call = (rsi_curr < 68)
-        rsi_safe_for_put = (rsi_curr > 32)
+        # ২. RSI মোমেন্টাম স্পিড (কমপক্ষে ২ পয়েন্টের মুভমেন্ট হতে হবে)
+        rsi_jump_up = (rsi_curr - rsi_prev) >= 2.0
+        rsi_jump_down = (rsi_prev - rsi_curr) >= 2.0
 
-        # ২. CALL BUY (CE) কন্ডিশন
+        # ৩. CALL BUY (CE) - স্ট্রং বুলিশ মোমেন্টাম
         is_call_signal = (
-            ((price > past_5_high) or (rsi_prev < 45 and rsi_curr >= 46)) 
+            ((price > past_5_high) or (rsi_prev < 45 and rsi_curr >= 48)) 
             and is_green 
             and rsi_rising 
+            and rsi_jump_up
             and rsi_safe_for_call 
             and has_vol
         )
 
-        # ৩. PUT BUY (PE) কন্ডিশন
+        # ৪. PUT BUY (PE) - স্ট্রং বিয়ারিশ মোমেন্টাম
         is_put_signal = (
-            ((price < past_5_low) or (rsi_prev > 55 and rsi_curr <= 54)) 
+            ((price < past_5_low) or (rsi_prev > 55 and rsi_curr <= 52)) 
             and is_red 
             and rsi_falling 
+            and rsi_jump_down
             and rsi_safe_for_put 
             and has_vol
         )
