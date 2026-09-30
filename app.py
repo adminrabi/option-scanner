@@ -174,41 +174,43 @@ def get_data_and_signal(target_info, m_type, tf):
         status_text = "⚠️ মার্কেট সাইডওয়েজ বা কনসোলিডেশনে আছে"
         color = "orange"
 
-        # SMART RSI REVERSAL & BREAKOUT LOGIC (CON SAFETY FILTERS)
+       # SMART RSI REVERSAL & BREAKOUT LOGIC (STABLE & SAFE)
         
-        # 1. Filtri RSI di sicurezza (Evita trappole in ipercomprato/ipervenduto)
-        rsi_safe_for_call = (rsi_curr < 68)   # Non comprare CALL se RSI è troppo alto (> 68)
-        rsi_safe_for_put = (rsi_curr > 32)    # Non comprare PUT se RSI è troppo basso (< 32)
+        # Vol Spike Safety Check (যাতে ডাটা গায়েব না হয়ে যায়)
+        has_vol = vol_spike if 'vol_spike' in locals() or 'vol_spike' in globals() else True
 
-        # 2. Condizione CALL BUY (CE) - Solamente se il mercato sale e RSI è sicuro
+        # ১. সেফটি ফিল্টার 
+        rsi_safe_for_call = (rsi_curr < 68)
+        rsi_safe_for_put = (rsi_curr > 32)
+
+        # ২. CALL BUY (CE) কন্ডিশন
         is_call_signal = (
             ((price > past_5_high) or (rsi_prev < 45 and rsi_curr >= 46)) 
             and is_green 
             and rsi_rising 
             and rsi_safe_for_call 
-            and vol_spike
+            and has_vol
         )
 
-        # 3. Condizione PUT BUY (PE) - Solamente se il mercato scende e RSI è sicuro
+        # ৩. PUT BUY (PE) কন্ডিশন
         is_put_signal = (
             ((price < past_5_low) or (rsi_prev > 55 and rsi_curr <= 54)) 
             and is_red 
             and rsi_falling 
             and rsi_safe_for_put 
-            and vol_spike
+            and has_vol
         )
 
-        # Output del Segnale in Memoria
+        # সিগন্যাল আউটপুট
         if is_call_signal:
             signal = "🚀 CONFIRMED CALL BUY (CE)" if ("Indices" in m_type or "NSE" in m_type or "NIFTY" in str(target_info)) else "🚀 BULLISH BREAKOUT"
-            status_text = f"🔥 Momentum RSI dal basso e ingresso buyers! ({candle_time})"
+            status_text = f"🔥 নিচ থেকে আরএসআই মোমেন্টাম ও বায়ার্স এন্ট্রি! ({candle_time})"
             color = "green"
 
         elif is_put_signal:
             signal = "🔻 CONFIRMED PUT BUY (PE)" if ("Indices" in m_type or "NSE" in m_type or "NIFTY" in str(target_info)) else "🔻 BEARISH BREAKDOWN"
-            status_text = f"🔥 Drop RSI dall'alto e pressione sellers! ({candle_time})"
+            status_text = f"🔥 উপর থেকে আরএসআই সেলিং ড্রপ ও সেলার্স প্রেসার! ({candle_time})"
             color = "red"
-
         # Targets & SL
         target_pct_1 = 0.005
         target_pct_2 = 0.010
