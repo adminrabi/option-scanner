@@ -138,8 +138,8 @@ def get_data_and_signal(target_info, m_type, tf):
         latest = df.iloc[-1]
         prev = df.iloc[-2]
         
-        past_5_high = df['High'].iloc[-6:-1].max()
-        past_5_low = df['Low'].iloc[-6:-1].min()
+        past_3_high = df['High'].iloc[-4:-1].max()
+        past_3_low = df['Low'].iloc[-4:-1].min()
 
         price = round(latest['Close'], 2)
         price_change = round(latest['Close'] - prev['Close'], 2)
@@ -178,13 +178,13 @@ def get_data_and_signal(target_info, m_type, tf):
         # SMART RSI REVERSAL & BREAKOUT LOGIC
         # --------------------------------------------------
         # CALL BUY (CE) Condition
-        if (price > past_5_high or (rsi_prev < 45 and rsi_curr >= 46)) and is_green and rsi_rising and (rsi_curr < 70) and vol_ok:
+        if (price > past_3_high or (rsi_prev < 45 and rsi_curr >= 46)) and is_green and rsi_rising and (rsi_curr < 70) and vol_ok:
             signal = "🚀 CONFIRMED CALL BUY (CE)" if "Indices" in m_type else "🚀 BULLISH BREAKOUT"
             status_text = f"🔥 নিচ থেকে আরএসআই মোমেন্টাম ও বায়ার্স এন্ট্রি! ({candle_time})"
             color = "green"
 
         # PUT BUY (PE) Condition
-        elif (price < past_5_low or (rsi_prev > 55 and rsi_curr <= 54)) and is_red and rsi_falling and (rsi_curr > 30) and vol_ok:
+        elif (price < past_3_low or (rsi_prev > 55 and rsi_curr <= 54)) and is_red and rsi_falling and (rsi_curr > 30) and vol_ok:
             signal = "🔻 CONFIRMED PUT BUY (PE)" if "Indices" in m_type else "🔻 BEARISH BREAKDOWN"
             status_text = f"🔥 উপর থেকে আরএসআই সেলিং ড্রপ ও সেলার্স প্রেসার! ({candle_time})"
             color = "red"
