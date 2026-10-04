@@ -7,11 +7,18 @@ from datetime import datetime
 # Streamlit Page Config
 st.set_page_config(page_title="Pro Scalping Scanner v3.0", layout="wide")
 
+# Safe Auto-Refresh Import
+try:
+    from streamlit_autorefresh import st_autorefresh
+    HAS_AUTOREFRESH = True
+except ImportError:
+    HAS_AUTOREFRESH = False
+
 st.title("⚡ Pro Scalper: Stock, Commodity & Crypto Scanner")
 st.markdown("---")
 
 # ---------------------------------------------------------
-# 1. SIDEBAR MULTI-MARKET SELECTOR
+# 1. SIDEBAR MULTI-MARKET SELECTOR & REFRESH CONTROLLER
 # ---------------------------------------------------------
 st.sidebar.header("🎯 Market & Timeframe Options")
 
@@ -21,18 +28,26 @@ market_type = st.sidebar.radio(
 )
 
 timeframe = st.sidebar.selectbox("Select Timeframe:", ["1m", "3m", "5m", "15m"], index=2)
-auto_refresh = st.sidebar.selectbox(
+
+st.sidebar.markdown("---")
+st.sidebar.subheader("🔄 Refresh Settings")
+
+# Manual Refresh Button
+if st.sidebar.button("🔄 Manual Refresh Now"):
+    st.rerun()
+
+# Auto Refresh Selection
+refresh_option = st.sidebar.selectbox(
     "Auto Refresh Interval:",
-    ["Off", "5 Seconds", "10 Seconds", "15 Seconds", "30 Seconds"],
-    index=2
+    ["Off", "10 Seconds", "15 Seconds", "30 Seconds", "1 Minute"],
+    index=0
 )
 
-if auto_refresh != "Off":
-    import time
-    sec_map = {"5 Seconds": 5, "10 Seconds": 10, "15 Seconds": 15, "30 Seconds": 30}
-    time.sleep(sec_map[auto_refresh])
-    st.rerun()
-# -----------------------------------------
+# Smooth Background Auto-Refresh Trigger
+if refresh_option != "Off" and HAS_AUTOREFRESH:
+    sec_map = {"10 Seconds": 10, "15 Seconds": 15, "30 Seconds": 30, "1 Minute": 60}
+    interval_ms = sec_map[refresh_option] * 1000
+    st_autorefresh(interval=interval_ms, key="scanner_autorefresh")
 
 # Asset List based on Selection
 if market_type == "NSE Indices & Stocks":
