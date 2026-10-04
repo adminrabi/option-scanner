@@ -202,15 +202,28 @@ if len(st.session_state.signal_memory) > 0:
 else:
     st.info("No strong signals triggered yet. Monitoring market momentum...")
 
-# TradingView Embedded Visual Chart Section
-st.markdown("---")
-st.subheader("🖥️ Interactive TradingView Visual Screen")
+# TradingView-এর জন্য নিখুঁত সিম্বল ম্যাপিং (Binance & NSE)
+tv_symbols = {
+    "NIFTY 50": "NSE:NIFTY",
+    "BANK NIFTY": "NSE:BANKNIFTY",
+    "SENSEX": "BSE:SENSEX",
+    "RELIANCE": "NSE:RELIANCE",
+    "CRUDE OIL": "MCX:CRUDEOIL1!",
+    "NATURAL GAS": "MCX:NATURALGAS1!",
+    "GOLD": "MCX:GOLD1!",
+    "SILVER": "MCX:SILVER1!",
+    "BITCOIN (BTC)": "BINANCE:BTCUSDT",
+    "ETHEREUM (ETH)": "BINANCE:ETHUSDT",
+    "SOLANA (SOL)": "BINANCE:SOLUSDT",
+    "BINANCE COIN (BNB)": "BINANCE:BNBUSDT"
+}
 
-selected_asset_symbol = tickers[st.selectbox("Select Asset for Live Visual Chart:", list(tickers.keys()))]
+selected_asset = st.selectbox("Select Asset for Live Visual Chart:", list(tickers.keys()))
+tv_code = tv_symbols.get(selected_asset, "BINANCE:BTCUSDT")
 
 tv_widget_html = f"""
 <div class="tradingview-widget-container" style="height:500px;width:100%;">
-  <iframe src="https://s.tradingview.com/widgetembed/?frameElementId=tradingview_1&symbol={selected_asset_symbol}&interval=5&hidesidetoolbar=0&symboledit=1&saveimage=1&toolbarbg=f1f3f6&studies=RSI@tv-basicstudies%2CStochasticRSI@tv-basicstudies&theme=dark&style=1" 
+  <iframe src="https://s.tradingview.com/widgetembed/?frameElementId=tradingview_1&symbol={tv_code}&interval=5&hidesidetoolbar=0&symboledit=1&saveimage=1&toolbarbg=f1f3f6&studies=RSI@tv-basicstudies%2CStochasticRSI@tv-basicstudies&theme=dark&style=1" 
           style="width: 100%; height: 500px; border: none;"></iframe>
 </div>
 """
