@@ -133,28 +133,29 @@ for name, symbol in tickers.items():
         stoch_d = round(float(curr['Stoch_D']), 2)
         buy_pwr = round(float(curr['Buying_Power']), 1)
         sell_pwr = round(float(curr['Selling_Power']), 1)
-        
-        past_5_high = df['High'].iloc[-6:-1].max()
-        past_5_low = df['Low'].iloc[-6:-1].min()
 
         is_green = curr['Close'] > curr['Open']
         is_red = curr['Close'] < curr['Open']
 
-        stoch_call_cross = (prev['Stoch_K'] <= prev['Stoch_D']) and (stoch_k > stoch_d)
-        stoch_put_cross = (prev['Stoch_K'] >= prev['Stoch_D']) and (stoch_k < stoch_d)
+        # Stochastic Crossover (Early Signal Engine)
+        stoch_bull_cross = (prev['Stoch_K'] <= prev['Stoch_D']) and (stoch_k > stoch_d)
+        stoch_bear_cross = (prev['Stoch_K'] >= prev['Stoch_D']) and (stoch_k < stoch_d)
 
+        # ⚡ NEW EARLY REVERSAL LOGIC
+        # ১. CALL/Buy: মার্কেট Oversold এলাকা থেকে ঘুরে প্রথম/দ্বিতীয় সবুজ ক্যান্ডেল দেবে
         is_call = (
-            (price > past_5_high or stoch_call_cross)
+            stoch_bull_cross
             and is_green
-            and buy_pwr >= 68.0
-            and rsi > 42 and rsi < 68
+            and buy_pwr >= 55.0         # বাইং পাওয়ার ফিল্টার ৫৫% করা হয়েছে যাতে আর্লি ট্রেড ধরা পড়ে
+            and rsi >= 35 and rsi <= 62 # চূড়ায় (Top) যেন বাই সিগন্যাল না দেয়
         )
 
+        # ২. PUT/Sell: মার্কেট Overbought এলাকা থেকে ঘুরে প্রথম/দ্বিতীয় লাল ক্যান্ডেল দেবে
         is_put = (
-            (price < past_5_low or stoch_put_cross)
+            stoch_bear_cross
             and is_red
-            and sell_pwr >= 68.0
-            and rsi < 58 and rsi > 32
+            and sell_pwr >= 55.0        # সেলিং পাওয়ার ফিল্টার ৫৫%
+            and rsi <= 65 and rsi >= 38 # একদম বটমে (Bottom) যেন সেল সিগন্যাল না দেয়
         )
 
         signal_type = "NEUTRAL"
@@ -177,7 +178,6 @@ for name, symbol in tickers.items():
             ist_time = datetime.utcnow() + dt.timedelta(hours=5, minutes=30)
             candle_time = ist_time.strftime("%I:%M:%S %p")
             
-            # মেমোরিতে নতুন সিগন্যাল যোগ করা
             st.session_state.signal_memory.append({
                 "Time (IST)": candle_time,
                 "Market": market_type,
@@ -189,7 +189,6 @@ for name, symbol in tickers.items():
                 "Stoch K/D": f"{stoch_k}/{stoch_d}"
             })
             
-            # লিমিট নির্ধারণ: ১৫টির বেশি সিগন্যাল হলে পুরোনোগুলো মুছে ফেলা হবে
             if len(st.session_state.signal_memory) > 15:
                 st.session_state.signal_memory = st.session_state.signal_memory[-15:]
 
@@ -237,7 +236,6 @@ tv_symbols = {
 selected_asset = st.selectbox("Select Asset for Live Visual Chart:", list(tickers.keys()))
 tv_code = tv_symbols.get(selected_asset, "BINANCE:BTCUSDT")
 
-# timezone=Asia%2FKolkata যোগ করা হয়েছে যাতে চার্ট ভারতীয় সময় দেখায়
 tv_widget_html = f"""
 <div class="tradingview-widget-container" style="height:500px;width:100%;">
   <iframe src="https://s.tradingview.com/widgetembed/?frameElementId=tradingview_1&symbol={tv_code}&interval=5&hidesidetoolbar=0&symboledit=1&saveimage=1&toolbarbg=f1f3f6&studies=RSI@tv-basicstudies%2CStochasticRSI@tv-basicstudies&theme=dark&style=1&timezone=Asia%2FKolkata" 
