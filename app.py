@@ -3,6 +3,7 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 from datetime import datetime
+import datetime as dt
 
 # Streamlit Page Config
 st.set_page_config(page_title="Pro Scalping Scanner v3.0", layout="wide")
@@ -168,9 +169,12 @@ for name, symbol in tickers.items():
         })
 
         if signal_type != "NEUTRAL":
-            candle_time = datetime.now().strftime("%H:%M:%S")
+            # Indian Standard Time (IST = UTC + 5:30) Calculation
+            ist_time = datetime.utcnow() + dt.timedelta(hours=5, minutes=30)
+            candle_time = ist_time.strftime("%I:%M:%S %p")  # Example: 06:24:36 PM
+            
             st.session_state.signal_memory.append({
-                "Time": candle_time,
+                "Time (IST)": candle_time,
                 "Market": market_type,
                 "Asset": name,
                 "Signal": signal_type,
@@ -202,7 +206,10 @@ if len(st.session_state.signal_memory) > 0:
 else:
     st.info("No strong signals triggered yet. Monitoring market momentum...")
 
-# TradingView-এর জন্য নিখুঁত সিম্বল ম্যাপিং (Binance & NSE)
+# TradingView Embedded Visual Chart Section
+st.markdown("---")
+st.subheader("🖥️ Interactive TradingView Visual Screen")
+
 tv_symbols = {
     "NIFTY 50": "NSE:NIFTY",
     "BANK NIFTY": "NSE:BANKNIFTY",
