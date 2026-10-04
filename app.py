@@ -2,336 +2,204 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import numpy as np
-import datetime
-import pytz
+import plotly.graph_objects as go
+from datetime import datetime
 
-# ১. পেজ কনফিগারেশন
-st.set_page_config(page_title="Price Action Smart RSI Scanner", layout="wide")
+# Streamlit Page Config
+st.set_page_config(page_title="Pro Scalping Scanner v3.0", layout="wide")
 
-# ২. অটো রিফ্রেশ
-try:
-    from streamlit_autorefresh import st_autorefresh
-    HAS_AUTOREFRESH = True
-except ImportError:
-    HAS_AUTOREFRESH = False
+st.title("⚡ Pro Scalper: Stock, Commodity & Crypto Scanner")
+st.markdown("---")
 
-# ৩. সিগন্যাল মেমোরি
-if 'signal_history_nse' not in st.session_state:
-    st.session_state.signal_history_nse = []
-if 'signal_history_mcx' not in st.session_state:
-    st.session_state.signal_history_mcx = []
-if 'last_logged_time' not in st.session_state:
-    st.session_state.last_logged_time = {}
-
-st.title("🎯 Smart RSI Direction & Breakout Scanner Pro")
-
-# ==========================================
-# ⚙️ SIDEBAR CONFIGURATION
-# ==========================================
-st.sidebar.header("⚙️ কন্ট্রোল প্যানেল")
-
-if st.sidebar.button("🔄 ম্যানুয়াল রিফ্রেশ"):
-    st.rerun()
-
-st.sidebar.markdown("---")
-
-timeframe = st.sidebar.selectbox(
-    "⏱️ ক্যান্ডেল টাইমফ্রেম:",
-    ["3m", "5m"],
-    index=0
-)
-
-auto_refresh = st.sidebar.checkbox("⏱️ অটো-রিফ্রেশ চালু রাখুন", value=True)
-if auto_refresh:
-    refresh_interval = st.sidebar.slider("রিফ্রেশ ইন্টারভাল (সেকেন্ড):", min_value=10, max_value=60, value=20)
-    if HAS_AUTOREFRESH:
-        st_autorefresh(interval=refresh_interval * 1000, key="datarefresh")
+# ---------------------------------------------------------
+# 1. SIDEBAR MULTI-MARKET SELECTOR
+# ---------------------------------------------------------
+st.sidebar.header("🎯 Market & Timeframe Options")
 
 market_type = st.sidebar.radio(
-    "মার্কেট সিলেক্ট করুন:",
-    ["📊 NSE & BSE Indices", "🛢️ MCX Commodities"]
+    "Select Market Domain:",
+    ["NSE Indices & Stocks", "MCX Commodities", "Crypto (24/7)"]
 )
 
-if market_type == "📊 NSE & BSE Indices":
-    targets = [
-        {"name": "NIFTY 50", "ticker": "^NSEI", "step": 50, "mult": 2, "type": "index"},
-        {"name": "BANK NIFTY", "ticker": "^NSEBANK", "step": 100, "mult": 2, "type": "index"},
-        {"name": "FINNIFTY", "ticker": "NIFTY_FIN_SERVICE.NS", "step": 50, "mult": 2, "type": "index"},
-        {"name": "SENSEX", "ticker": "^BSESN", "step": 100, "mult": 2, "type": "index"}
-    ]
-else:
-    targets = [
-        {"name": "CRUDE OIL", "ticker": "CL=F", "step": 50, "mult": 1, "type": "crude"},
-        {"name": "NATURAL GAS", "ticker": "NG=F", "step": 5, "mult": 1, "type": "ng"},
-        {"name": "GOLD", "ticker": "GC=F", "step": 100, "mult": 1, "type": "gold"},
-        {"name": "SILVER", "ticker": "SI=F", "step": 250, "mult": 1, "type": "silver"}
-    ]
+timeframe = st.sidebar.selectbox("Select Timeframe:", ["1m", "3m", "5m", "15m"], index=2)
 
-# ===================================================
-# 🧠 SMART RSI DIRECTION & PRICE ACTION ENGINE
-# ===================================================
-def calculate_rsi(series, period=14):
-    delta = series.diff()
-    gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
-    rs = gain / loss
-    return 100 - (100 / (1 + rs))
+# Define Asset List based on Market Selection
+if market_type == "NSE Indices & Stocks":
+    tickers = {
+        "NIFTY 50": "^NSEI",
+        "BANK NIFTY": "^NSEBANK",
+        "SENSEX": "^BSESN",
+        "RELIANCE": "RELIANCE.NS"
+    }
+elif market_type == "MCX Commodities":
+    tickers = {
+        "CRUDE OIL": "CL=F",
+        "NATURAL GAS": "NG=F",
+        "GOLD": "GC=F",
+        "SILVER": "SI=F"
+    }
+else:  # Crypto
+    tickers = {
+        "BITCOIN (BTC)": "BTC-USD",
+        "ETHEREUM (ETH)": "ETH-USD",
+        "SOLANA (SOL)": "SOL-USD",
+        "BINANCE COIN (BNB)": "BNB-USD"
+    }
 
-def calculate_macd(series, fast=12, slow=26, signal=9):
-    exp1 = series.ewm(span=fast, adjust=False).mean()
-    exp2 = series.ewm(span=slow, adjust=False).mean()
-    macd_line = exp1 - exp2
-    signal_line = macd_line.ewm(span=signal, adjust=False).mean()
-    return macd_line, signal_line
+# Session State for Signal History (Memory)
+if "signal_memory" not in st.session_state:
+    st.session_state.signal_memory = []
 
-def get_data_and_signal(target_info, m_type, tf):
-    ticker = target_info['ticker']
-    strike_step = target_info['step']
-    opt_mult = target_info['mult']
-    asset_type = target_info.get('type', 'index')
+# ---------------------------------------------------------
+# 2. INDICATOR & MATH CALCULATIONS
+# ---------------------------------------------------------
+def calculate_indicators(df):
+    # RSI (14)
+    delta = df['Close'].diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+    rs = gain / (loss + 1e-10)
+    df['RSI'] = 100 - (100 / (1 + rs))
 
+    # Stochastic RSI (14, 3, 3)
+    rsi = df['RSI']
+    rsi_min = rsi.rolling(window=14).min()
+    rsi_max = rsi.rolling(window=14).max()
+    stoch_rsi = (rsi - rsi_min) / (rsi_max - rsi_min + 1e-10)
+    df['Stoch_K'] = stoch_rsi.rolling(window=3).mean() * 100
+    df['Stoch_D'] = df['Stoch_K'].rolling(window=3).mean()
+
+    # EMA 20 & EMA 50
+    df['EMA20'] = df['Close'].ewm(span=20, adjust=False).mean()
+    df['EMA50'] = df['Close'].ewm(span=50, adjust=False).mean()
+
+    # Candle Buying/Selling Power (%)
+    candle_range = df['High'] - df['Low']
+    candle_range = candle_range.replace(0, 1e-10)
+    df['Buying_Power'] = ((df['Close'] - df['Low']) / candle_range) * 100
+    df['Selling_Power'] = ((df['High'] - df['Close']) / candle_range) * 100
+
+    return df
+
+# ---------------------------------------------------------
+# 3. LIVE DATA FETCHING & SIGNAL ENGINE
+# ---------------------------------------------------------
+st.subheader(f"📊 Live Scan Dashboard - [{market_type}] ({timeframe})")
+
+scanned_results = []
+
+for name, symbol in tickers.items():
     try:
-        ticker_obj = yf.Ticker(ticker)
-        df = None
+        data = yf.download(symbol, period="2d", interval=timeframe, progress=False)
+        if len(data) < 20:
+            continue
+        
+        # Clean MultiIndex Columns if present
+        if isinstance(data.columns, pd.MultiIndex):
+            data.columns = data.columns.get_level_values(0)
 
-        # ১ মিনিটের ব্যাকআপ ডাটা থেকে ক্যান্ডেল রিকনস্ট্রাকশন (ফাস্ট ডাটা)
-        df_1m = ticker_obj.history(period="5d", interval="1m", auto_adjust=True)
-
-        if df_1m is not None and not df_1m.empty and len(df_1m) >= 10:
-            if tf == "3m":
-                df = df_1m.resample('3min').agg({
-                    'Open': 'first', 'High': 'max', 'Low': 'min', 'Close': 'last', 'Volume': 'sum'
-                }).dropna()
-            elif tf == "5m":
-                df = df_1m.resample('5min').agg({
-                    'Open': 'first', 'High': 'max', 'Low': 'min', 'Close': 'last', 'Volume': 'sum'
-                }).dropna()
-
-        if df is None or df.empty or len(df) < 15:
-            df = ticker_obj.history(period="5d", interval="5m", auto_adjust=True)
-
-        if df is None or df.empty or len(df) < 15:
-            return None
-
-        # MCX Currency Adjustment
-        usd_inr = 95.98  
-        duty_tax = 1.15   
-
-        if asset_type == "gold":
-            factor = (10 / 31.10347) * usd_inr * duty_tax
-            df['Close'] *= factor; df['Open'] *= factor; df['High'] *= factor; df['Low'] *= factor
-        elif asset_type == "silver":
-            factor = (1000 / 31.10347) * usd_inr * duty_tax
-            df['Close'] *= factor; df['Open'] *= factor; df['High'] *= factor; df['Low'] *= factor
-        elif asset_type in ["crude", "ng"]:
-            factor = usd_inr
-            df['Close'] *= factor; df['Open'] *= factor; df['High'] *= factor; df['Low'] *= factor
-
-        # --------------------------------------------------
-        # TECHNICAL INDICATORS
-        # --------------------------------------------------
-        df['EMA_20'] = df['Close'].ewm(span=20, adjust=False).mean()
-        df['RSI'] = calculate_rsi(df['Close'], period=14)
-        df['MACD'], df['MACD_Signal'] = calculate_macd(df['Close'])
-        df['Avg_Vol'] = df['Volume'].rolling(window=10).mean()
-
-        latest = df.iloc[-1]
+        df = calculate_indicators(data.copy())
+        
+        curr = df.iloc[-1]
         prev = df.iloc[-2]
+
+        price = round(float(curr['Close']), 2)
+        rsi = round(float(curr['RSI']), 2)
+        stoch_k = round(float(curr['Stoch_K']), 2)
+        stoch_d = round(float(curr['Stoch_D']), 2)
+        buy_pwr = round(float(curr['Buying_Power']), 1)
+        sell_pwr = round(float(curr['Selling_Power']), 1)
         
-        past_3_high = df['High'].iloc[-4:-1].max()
-        past_3_low = df['Low'].iloc[-4:-1].min()
+        # Breakout Checks
+        past_5_high = df['High'].iloc[-6:-1].max()
+        past_5_low = df['Low'].iloc[-6:-1].min()
 
-        price = round(latest['Close'], 2)
-        price_change = round(latest['Close'] - prev['Close'], 2)
-        pct_change = round((price_change / prev['Close']) * 100, 2)
+        # Signal Logic Conditions
+        is_green = curr['Close'] > curr['Open']
+        is_red = curr['Close'] < curr['Open']
 
-        rsi_curr = round(latest['RSI'], 1) if not np.isnan(latest['RSI']) else 50.0
-        rsi_prev = round(prev['RSI'], 1) if not np.isnan(prev['RSI']) else 50.0
-        
-        rsi_rising = rsi_curr > rsi_prev
-        rsi_falling = rsi_curr < rsi_prev
+        stoch_call_cross = (prev['Stoch_K'] <= prev['Stoch_D']) and (stoch_k > stoch_d)
+        stoch_put_cross = (prev['Stoch_K'] >= prev['Stoch_D']) and (stoch_k < stoch_d)
 
-        ema_val = latest['EMA_20']
-        macd_val = latest['MACD']
-        macd_sig_val = latest['MACD_Signal']
-        
-        # Volume Calculation (Index vs Commodity Bypass)
-        vol_ratio = round(latest['Volume'] / latest['Avg_Vol'], 1) if (latest['Avg_Vol'] > 0 and not np.isnan(latest['Avg_Vol'])) else 1.0
-        
-        # ইন্ডেক্সের জন্য ভলিউম ফিল্টার অফ (যেহেতু ইন্ডেক্সে ভলিউম থাকে না)
-        if asset_type == "index":
-            vol_ok = True
-        else:
-            vol_ok = vol_ratio >= 1.0
+        # CALL SIGNAL
+        is_call = (
+            (price > past_5_high or stoch_call_cross)
+            and is_green
+            and buy_pwr >= 68.0
+            and rsi > 42 and rsi < 68
+        )
 
-        ist_tz = pytz.timezone('Asia/Kolkata')
-        candle_time = latest.name.strftime("%H:%M") if latest.name.tzinfo is None else latest.name.tz_convert(ist_tz).strftime("%H:%M")
+        # PUT SIGNAL
+        is_put = (
+            (price < past_5_low or stoch_put_cross)
+            and is_red
+            and sell_pwr >= 68.0
+            and rsi < 58 and rsi > 32
+        )
 
-        is_green = latest['Close'] > latest['Open']
-        is_red = latest['Close'] < latest['Open']
+        signal_type = "NEUTRAL"
+        if is_call:
+            signal_type = "🚀 CONFIRMED CALL (CE)"
+        elif is_put:
+            signal_type = "🔻 CONFIRMED PUT (PE)"
 
-        signal = "WAIT & WATCH"
-        status_text = "⚠️ মার্কেট সাইডওয়েজ বা কনসোলিডেশনে আছে"
-        color = "orange"
+        # Save to Live View Table
+        scanned_results.append({
+            "Asset": name,
+            "Price": price,
+            "RSI": rsi,
+            "Stoch %K/%D": f"{stoch_k} / {stoch_d}",
+            "Buy Power %": f"{buy_pwr}%",
+            "Sell Power %": f"{sell_pwr}%",
+            "Signal": signal_type
+        })
 
-        # --------------------------------------------------
-        # SMART RSI REVERSAL & BREAKOUT LOGIC
-        # --------------------------------------------------
-        # CALL BUY (CE) Condition
-        if (price > past_3_high or (rsi_prev < 45 and rsi_curr >= 46)) and is_green and rsi_rising and (rsi_curr < 70) and vol_ok:
-            signal = "🚀 CONFIRMED CALL BUY (CE)" if "Indices" in m_type else "🚀 BULLISH BREAKOUT"
-            status_text = f"🔥 নিচ থেকে আরএসআই মোমেন্টাম ও বায়ার্স এন্ট্রি! ({candle_time})"
-            color = "green"
+        # Save to Permanent Memory Log if Signal Triggered
+        if signal_type != "NEUTRAL":
+            candle_time = datetime.now().strftime("%H:%M:%S")
+            st.session_state.signal_memory.append({
+                "Time": candle_time,
+                "Market": market_type,
+                "Asset": name,
+                "Signal": signal_type,
+                "Price": price,
+                "RSI": rsi,
+                "Buy/Sell Power": f"B: {buy_pwr}% | S: {sell_pwr}%",
+                "Stoch K/D": f"{stoch_k}/{stoch_d}"
+            })
 
-        # PUT BUY (PE) Condition
-        elif (price < past_3_low or (rsi_prev > 55 and rsi_curr <= 54)) and is_red and rsi_falling and (rsi_curr > 30) and vol_ok:
-            signal = "🔻 CONFIRMED PUT BUY (PE)" if "Indices" in m_type else "🔻 BEARISH BREAKDOWN"
-            status_text = f"🔥 উপর থেকে আরএসআই সেলিং ড্রপ ও সেলার্স প্রেসার! ({candle_time})"
-            color = "red"
+    except Exception as e:
+        continue
 
-        # Targets & SL
-        target_pct_1 = 0.005
-        target_pct_2 = 0.010
-        sl_pct = 0.0035
+# Render Live Results Table
+if scanned_results:
+    res_df = pd.DataFrame(scanned_results)
+    st.dataframe(res_df, use_container_width=True)
+else:
+    st.warning("Fetching live market data...")
 
-        sl, target1, target2 = 0.0, 0.0, 0.0
-        if color == "green":
-            sl = round(price * (1 - sl_pct), 2)
-            target1 = round(price * (1 + target_pct_1), 2)
-            target2 = round(price * (1 + target_pct_2), 2)
-        elif color == "red":
-            sl = round(price * (1 + sl_pct), 2)
-            target1 = round(price * (1 - target_pct_1), 2)
-            target2 = round(price * (1 - target_pct_2), 2)
-
-        atm_strike = int(round(price / strike_step) * strike_step)
-        itm_ce = atm_strike - (strike_step * opt_mult)
-        itm_pe = atm_strike + (strike_step * opt_mult)
-
-        option_suggestion = ""
-        if color == "green" and "Indices" in m_type:
-            option_suggestion = f"💡 **Recommended:** ITM {itm_ce} CE | ATM {atm_strike} CE"
-        elif color == "red" and "Indices" in m_type:
-            option_suggestion = f"💡 **Recommended:** ITM {itm_pe} PE | ATM {atm_strike} PE"
-
-        return {
-            'price': price,
-            'change': price_change,
-            'pct_change': pct_change,
-            'rsi': rsi_curr,
-            'rsi_rising': rsi_rising,
-            'is_above_ema': price > ema_val,
-            'is_macd_bullish': macd_val > macd_sig_val,
-            'vol_ratio': vol_ratio,
-            'signal': signal,
-            'status_text': status_text,
-            'color': color,
-            'sl': sl,
-            'target1': target1,
-            'target2': target2,
-            'option_suggestion': option_suggestion,
-            'candle_time': candle_time,
-            'asset_type': asset_type
-        }
-    except Exception:
-        return None
-
-# ==========================================
-# 🖥️ DASHBOARD DISPLAY
-# ==========================================
-cols = st.columns(len(targets))
-
-for idx, item in enumerate(targets):
-    data = get_data_and_signal(item, market_type, timeframe)
-    with cols[idx]:
-        st.subheader(f"📌 {item['name']}")
-        if data:
-            if data['color'] == 'green': st.success(f"### {data['signal']}\n\n{data['status_text']}")
-            elif data['color'] == 'red': st.error(f"### {data['signal']}\n\n{data['status_text']}")
-            elif data['color'] == 'orange': st.warning(f"### {data['signal']}\n\n{data['status_text']}")
-            else: st.info(f"### {data['signal']}\n\n{data['status_text']}")
-
-            st.metric(
-                label="লাইভ প্রাইস", 
-                value=f"₹{data['price']:,.2f}", 
-                delta=f"{data['change']:+.2f} ({data['pct_change']:+.2f}%)"
-            )
-
-            st.write(f"⏱️ **Time:** {data['candle_time']}")
-
-            st.markdown("##### 📊 ইন্ডিকেটর স্ট্যাটাস:")
-            
-            # RSI Status
-            rsi_arrow = "↗️ Rising" if data['rsi_rising'] else "↘️ Falling"
-            if data['rsi'] >= 70:
-                st.markdown(f"🔴 **RSI:** `{data['rsi']}` ({rsi_arrow} - Overbought ⚠️)")
-            elif data['rsi'] <= 30:
-                st.markdown(f"🟢 **RSI:** `{data['rsi']}` ({rsi_arrow} - Oversold Zone)")
-            elif data['rsi_rising']:
-                st.markdown(f"🟢 **RSI:** `{data['rsi']}` ({rsi_arrow})")
-            else:
-                st.markdown(f"🔴 **RSI:** `{data['rsi']}` ({rsi_arrow})")
-
-            # MACD
-            if data['is_macd_bullish']: st.markdown("🟢 **MACD:** `Bullish`")
-            else: st.markdown("🔴 **MACD:** `Bearish`")
-
-            # 20-EMA
-            if data['is_above_ema']: st.markdown("🟢 **20-EMA:** `Above`")
-            else: st.markdown("🔴 **20-EMA:** `Below`")
-
-            # Volume Display
-            if data['asset_type'] == "index":
-                st.markdown("⚪ **Volume:** `N/A (Index Price Action)`")
-            else:
-                if data['vol_ratio'] >= 1.2: st.markdown(f"🟢 **Volume:** `{data['vol_ratio']}x Spike`")
-                else: st.markdown(f"⚪ **Volume:** `{data['vol_ratio']}x Normal`")
-
-            is_confirmed_signal = data['color'] in ['green', 'red']
-
-            if is_confirmed_signal:
-                st.markdown("---")
-                st.write(f"🎯 **T1:** {data['target1']:,.2f} | **T2:** {data['target2']:,.2f}")
-                st.write(f"🛑 **SL:** {data['sl']:,.2f}")
-                if data['option_suggestion']:
-                    st.caption(data['option_suggestion'])
-
-            asset_name = item['name']
-            last_time = st.session_state.last_logged_time.get(asset_name, "")
-            
-            if is_confirmed_signal and data['candle_time'] != last_time:
-                timestamp = datetime.datetime.now(pytz.timezone('Asia/Kolkata')).strftime("%I:%M:%S %p")
-                log_entry = {
-                    "সময়": timestamp,
-                    "এসেট": asset_name,
-                    "সিগন্যাল": data['signal'],
-                    "এন্ট্রি প্রাইস": f"₹{data['price']:,.2f}",
-                    "টার্গেট ১": f"₹{data['target1']:,.2f}",
-                    "টার্গেট ২": f"₹{data['target2']:,.2f}",
-                    "স্টপ লস": f"₹{data['sl']:,.2f}"
-                }
-                
-                if "Indices" in market_type:
-                    st.session_state.signal_history_nse.insert(0, log_entry)
-                    if len(st.session_state.signal_history_nse) > 10: st.session_state.signal_history_nse.pop()
-                else:
-                    st.session_state.signal_history_mcx.insert(0, log_entry)
-                    if len(st.session_state.signal_history_mcx) > 10: st.session_state.signal_history_mcx.pop()
-                    
-                st.session_state.last_logged_time[asset_name] = data['candle_time']
-        else:
-            st.error(f"⚠️ {item['name']} ডাটা পাওয়া যাচ্ছে না।")
-
-# 📜 মেমোরি টেবিল
+# ---------------------------------------------------------
+# 4. SIGNAL MEMORY TABLE & TRADINGVIEW VISUAL
+# ---------------------------------------------------------
 st.markdown("---")
-if "Indices" in market_type:
-    st.subheader("📜 NSE & BSE অপশন বায়িং সিগন্যাল মেমোরি")
-    active_history = st.session_state.signal_history_nse
-else:
-    st.subheader("📜 MCX কমোডিটি সিগন্যাল মেমোরি")
-    active_history = st.session_state.signal_history_mcx
+st.subheader("📜 Confirmed Signal Memory Log (Saved History)")
 
-if active_history:
-    st.dataframe(pd.DataFrame(active_history), use_container_width=True)
+if len(st.session_state.signal_memory) > 0:
+    mem_df = pd.DataFrame(st.session_state.signal_memory)
+    st.dataframe(mem_df.iloc[::-1], use_container_width=True)
 else:
-    st.info("এখনো পর্যন্ত কোনো স্ক্যালপিং সিগন্যাল মেমোরিতে রেকর্ড হয়নি।")
+    st.info("No strong signals triggered yet. Monitoring market momentum...")
+
+# TradingView Embedded Visual Chart Section
+st.markdown("---")
+st.subheader("🖥️ Interactive TradingView Visual Screen")
+
+selected_asset_symbol = tickers[st.selectbox("Select Asset for Live Visual Chart:", list(tickers.keys()))]
+
+tv_widget_html = f"""
+<div class="tradingview-widget-container" style="height:500px;width:100%;">
+  <iframe src="https://s.tradingview.com/widgetembed/?frameElementId=tradingview_1&symbol={selected_asset_symbol}&interval=5&hidesidetoolbar=0&symboledit=1&saveimage=1&toolbarbg=f1f3f6&studies=RSI@tv-basicstudies%2CStochasticRSI@tv-basicstudies&theme=dark&style=1" 
+          style="width: 100%; height: 500px; border: none;"></iframe>
+</div>
+"""
+st.components.v1.html(tv_widget_html, height=520)
