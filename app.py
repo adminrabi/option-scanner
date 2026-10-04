@@ -21,6 +21,18 @@ market_type = st.sidebar.radio(
 )
 
 timeframe = st.sidebar.selectbox("Select Timeframe:", ["1m", "3m", "5m", "15m"], index=2)
+auto_refresh = st.sidebar.selectbox(
+    "Auto Refresh Interval:",
+    ["Off", "5 Seconds", "10 Seconds", "15 Seconds", "30 Seconds"],
+    index=2
+)
+
+if auto_refresh != "Off":
+    import time
+    sec_map = {"5 Seconds": 5, "10 Seconds": 10, "15 Seconds": 15, "30 Seconds": 30}
+    time.sleep(sec_map[auto_refresh])
+    st.rerun()
+# -----------------------------------------
 
 # Asset List based on Selection
 if market_type == "NSE Indices & Stocks":
