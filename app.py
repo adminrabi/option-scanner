@@ -2,7 +2,6 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import numpy as np
-import plotly.graph_objects as go
 from datetime import datetime
 
 # Streamlit Page Config
@@ -23,7 +22,7 @@ market_type = st.sidebar.radio(
 
 timeframe = st.sidebar.selectbox("Select Timeframe:", ["1m", "3m", "5m", "15m"], index=2)
 
-# Define Asset List based on Market Selection
+# Asset List based on Selection
 if market_type == "NSE Indices & Stocks":
     tickers = {
         "NIFTY 50": "^NSEI",
@@ -46,7 +45,7 @@ else:  # Crypto
         "BINANCE COIN (BNB)": "BNB-USD"
     }
 
-# Session State for Signal History (Memory)
+# Session State for Signal History
 if "signal_memory" not in st.session_state:
     st.session_state.signal_memory = []
 
@@ -54,14 +53,12 @@ if "signal_memory" not in st.session_state:
 # 2. INDICATOR & MATH CALCULATIONS
 # ---------------------------------------------------------
 def calculate_indicators(df):
-    # RSI (14)
     delta = df['Close'].diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
     rs = gain / (loss + 1e-10)
     df['RSI'] = 100 - (100 / (1 + rs))
 
-    # Stochastic RSI (14, 3, 3)
     rsi = df['RSI']
     rsi_min = rsi.rolling(window=14).min()
     rsi_max = rsi.rolling(window=14).max()
@@ -69,11 +66,6 @@ def calculate_indicators(df):
     df['Stoch_K'] = stoch_rsi.rolling(window=3).mean() * 100
     df['Stoch_D'] = df['Stoch_K'].rolling(window=3).mean()
 
-    # EMA 20 & EMA 50
-    df['EMA20'] = df['Close'].ewm(span=20, adjust=False).mean()
-    df['EMA50'] = df['Close'].ewm(span=50, adjust=False).mean()
-
-    # Candle Buying/Selling Power (%)
     candle_range = df['High'] - df['Low']
     candle_range = candle_range.replace(0, 1e-10)
     df['Buying_Power'] = ((df['Close'] - df['Low']) / candle_range) * 100
@@ -94,7 +86,6 @@ for name, symbol in tickers.items():
         if len(data) < 20:
             continue
         
-        # Clean MultiIndex Columns if present
         if isinstance(data.columns, pd.MultiIndex):
             data.columns = data.columns.get_level_values(0)
 
@@ -110,18 +101,15 @@ for name, symbol in tickers.items():
         buy_pwr = round(float(curr['Buying_Power']), 1)
         sell_pwr = round(float(curr['Selling_Power']), 1)
         
-        # Breakout Checks
         past_5_high = df['High'].iloc[-6:-1].max()
         past_5_low = df['Low'].iloc[-6:-1].min()
 
-        # Signal Logic Conditions
         is_green = curr['Close'] > curr['Open']
         is_red = curr['Close'] < curr['Open']
 
         stoch_call_cross = (prev['Stoch_K'] <= prev['Stoch_D']) and (stoch_k > stoch_d)
         stoch_put_cross = (prev['Stoch_K'] >= prev['Stoch_D']) and (stoch_k < stoch_d)
 
-        # CALL SIGNAL
         is_call = (
             (price > past_5_high or stoch_call_cross)
             and is_green
@@ -129,7 +117,6 @@ for name, symbol in tickers.items():
             and rsi > 42 and rsi < 68
         )
 
-        # PUT SIGNAL
         is_put = (
             (price < past_5_low or stoch_put_cross)
             and is_red
@@ -143,7 +130,6 @@ for name, symbol in tickers.items():
         elif is_put:
             signal_type = "🔻 CONFIRMED PUT (PE)"
 
-        # Save to Live View Table
         scanned_results.append({
             "Asset": name,
             "Price": price,
@@ -154,7 +140,6 @@ for name, symbol in tickers.items():
             "Signal": signal_type
         })
 
-        # Save to Permanent Memory Log if Signal Triggered
         if signal_type != "NEUTRAL":
             candle_time = datetime.now().strftime("%H:%M:%S")
             st.session_state.signal_memory.append({
@@ -171,7 +156,7 @@ for name, symbol in tickers.items():
     except Exception as e:
         continue
 
-# Render Live Results Table
+# Render Results
 if scanned_results:
     res_df = pd.DataFrame(scanned_results)
     st.dataframe(res_df, use_container_width=True)
