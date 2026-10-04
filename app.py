@@ -50,6 +50,11 @@ if refresh_option != "Off" and HAS_AUTOREFRESH:
     interval_ms = sec_map[refresh_option] * 1000
     st_autorefresh(interval=interval_ms, key="scanner_autorefresh")
 
+# Clear Memory Manual Button
+if st.sidebar.button("🗑️ Clear Signal Memory"):
+    st.session_state.signal_memory = []
+    st.rerun()
+
 # Asset List based on Selection
 if market_type == "NSE Indices & Stocks":
     tickers = {
@@ -169,10 +174,10 @@ for name, symbol in tickers.items():
         })
 
         if signal_type != "NEUTRAL":
-            # Indian Standard Time (IST = UTC + 5:30) Calculation
             ist_time = datetime.utcnow() + dt.timedelta(hours=5, minutes=30)
-            candle_time = ist_time.strftime("%I:%M:%S %p")  # Example: 06:24:36 PM
+            candle_time = ist_time.strftime("%I:%M:%S %p")
             
+            # মেমোরিতে নতুন সিগন্যাল যোগ করা
             st.session_state.signal_memory.append({
                 "Time (IST)": candle_time,
                 "Market": market_type,
@@ -183,6 +188,10 @@ for name, symbol in tickers.items():
                 "Buy/Sell Power": f"B: {buy_pwr}% | S: {sell_pwr}%",
                 "Stoch K/D": f"{stoch_k}/{stoch_d}"
             })
+            
+            # লিমিট নির্ধারণ: ১৫টির বেশি সিগন্যাল হলে পুরোনোগুলো মুছে ফেলা হবে
+            if len(st.session_state.signal_memory) > 15:
+                st.session_state.signal_memory = st.session_state.signal_memory[-15:]
 
     except Exception as e:
         continue
@@ -198,7 +207,7 @@ else:
 # 4. SIGNAL MEMORY TABLE & TRADINGVIEW VISUAL
 # ---------------------------------------------------------
 st.markdown("---")
-st.subheader("📜 Confirmed Signal Memory Log (Saved History)")
+st.subheader("📜 Confirmed Signal Memory Log (Saved History - Last 15)")
 
 if len(st.session_state.signal_memory) > 0:
     mem_df = pd.DataFrame(st.session_state.signal_memory)
@@ -228,9 +237,10 @@ tv_symbols = {
 selected_asset = st.selectbox("Select Asset for Live Visual Chart:", list(tickers.keys()))
 tv_code = tv_symbols.get(selected_asset, "BINANCE:BTCUSDT")
 
+# timezone=Asia%2FKolkata যোগ করা হয়েছে যাতে চার্ট ভারতীয় সময় দেখায়
 tv_widget_html = f"""
 <div class="tradingview-widget-container" style="height:500px;width:100%;">
-  <iframe src="https://s.tradingview.com/widgetembed/?frameElementId=tradingview_1&symbol={tv_code}&interval=5&hidesidetoolbar=0&symboledit=1&saveimage=1&toolbarbg=f1f3f6&studies=RSI@tv-basicstudies%2CStochasticRSI@tv-basicstudies&theme=dark&style=1" 
+  <iframe src="https://s.tradingview.com/widgetembed/?frameElementId=tradingview_1&symbol={tv_code}&interval=5&hidesidetoolbar=0&symboledit=1&saveimage=1&toolbarbg=f1f3f6&studies=RSI@tv-basicstudies%2CStochasticRSI@tv-basicstudies&theme=dark&style=1&timezone=Asia%2FKolkata" 
           style="width: 100%; height: 500px; border: none;"></iframe>
 </div>
 """
