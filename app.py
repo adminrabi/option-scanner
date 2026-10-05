@@ -193,82 +193,39 @@ if len(st.session_state.signal_memory) > 0:
     mem_df = pd.DataFrame(st.session_state.signal_memory)
     st.dataframe(mem_df.iloc[::-1], use_container_width=True)
 else:
-    # স্থায়ী ফাঁকা টেবিল যাতে মেমোরি সেকশন গায়েব না হয়
     empty_df = pd.DataFrame(columns=["Time (IST)", "Market", "Asset", "Signal", "Price", "RSI", "Buy/Sell Power", "Stoch K/D"])
     st.dataframe(empty_df, use_container_width=True)
     st.info("No strong signals triggered yet. Monitoring market momentum...")
 
 # ---------------------------------------------------------
-# 5. LIVE INTERACTIVE CANDLESTICK CHART (NO TRADINGVIEW POPUP)
+# 5. TRADINGVIEW VISUAL SCREEN (STABLE EMBEDDED ENGINE)
 # ---------------------------------------------------------
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
-
 st.markdown("---")
-st.subheader("🖥️ Live Interactive Candlestick & Indicator Chart")
+st.subheader("🖥️ Interactive TradingView Visual Screen")
 
-selected_asset = st.selectbox("Select Asset for Chart View:", list(tickers.keys()))
-asset_symbol = tickers[selected_asset]
+tv_symbols = {
+    "NIFTY 50": "NSE:RELIANCE",
+    "BANK NIFTY": "NSE:HDFCBANK",
+    "SENSEX": "NSE:SBIN",
+    "RELIANCE": "NSE:RELIANCE",
+    "CRUDE OIL": "TVC:USOIL",
+    "NATURAL GAS": "TVC:NATURALGAS",
+    "GOLD": "TVC:GOLD",
+    "SILVER": "TVC:SILVER",
+    "BITCOIN (BTC)": "BINANCE:BTCUSDT",
+    "ETHEREUM (ETH)": "BINANCE:ETHUSDT",
+    "SOLANA (SOL)": "BINANCE:SOLUSDT",
+    "BINANCE COIN (BNB)": "BINANCE:BNBUSDT"
+}
 
-try:
-    chart_data = yf.download(asset_symbol, period="1d", interval=timeframe, progress=False)
-    if isinstance(chart_data.columns, pd.MultiIndex):
-        chart_data.columns = chart_data.columns.get_level_values(0)
+selected_asset = st.selectbox("Select Asset for Live Visual Chart:", list(tickers.keys()))
+tv_code = tv_symbols.get(selected_asset, "TVC:USOIL")
 
-    if not chart_data.empty and len(chart_data) >= 15:
-        df_chart = calculate_indicators(chart_data.copy())
+tv_widget_html = f"""
+<div class="tradingview-widget-container" style="height:520px;width:100%;">
+  <iframe src="https://s.tradingview.com/widgetembed/?symbol={tv_code}&interval=5&theme=dark&style=1&timezone=Asia%2FKolkata&studies=RSI@tv-basicstudies%2CStochasticRSI@tv-basicstudies" 
+          style="width: 100%; height: 500px; border: none;"></iframe>
+</div>
+"""
 
-        # Create Subplots for Price, RSI, Stoch RSI
-        fig = make_subplots(
-            rows=3, cols=1, 
-            shared_xaxes=True, 
-            vertical_spacing=0.03,
-            row_heights=[0.5, 0.25, 0.25],
-            subplot_titles=(f"{selected_asset} Price Chart", "RSI (14)", "Stochastic RSI")
-        )
-
-        # Candlestick Chart
-        fig.add_trace(
-            go.Candlestick(
-                x=df_chart.index,
-                open=df_chart['Open'],
-                high=df_chart['High'],
-                low=df_chart['Low'],
-                close=df_chart['Close'],
-                name="Price"
-            ),
-            row=1, col=1
-        )
-
-        # RSI Line
-        fig.add_trace(
-            go.Scatter(x=df_chart.index, y=df_chart['RSI'], name="RSI", line=dict(color='purple', width=1.5)),
-            row=2, col=1
-        )
-        fig.add_hline(y=70, line_dash="dash", line_color="red", row=2, col=1)
-        fig.add_hline(y=30, line_dash="dash", line_color="green", row=2, col=1)
-
-        # Stoch RSI (%K & %D)
-        fig.add_trace(
-            go.Scatter(x=df_chart.index, y=df_chart['Stoch_K'], name="Stoch %K", line=dict(color='blue', width=1.5)),
-            row=3, col=1
-        )
-        fig.add_trace(
-            go.Scatter(x=df_chart.index, y=df_chart['Stoch_D'], name="Stoch %D", line=dict(color='orange', width=1.5)),
-            row=3, col=1
-        )
-        fig.add_hline(y=80, line_dash="dash", line_color="red", row=3, col=1)
-        fig.add_hline(y=20, line_dash="dash", line_color="green", row=3, col=1)
-
-        fig.update_layout(
-            template="plotly_dark",
-            xaxis_rangeslider_visible=False,
-            height=600,
-            margin=dict(l=10, r=10, t=30, b=10)
-        )
-
-        st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.warning("Insufficient data available for rendering chart.")
-except Exception as e:
-    st.error(f"Error loading interactive chart: {e}")
+st.components.v1.html(tv_widget_html, height=530)
