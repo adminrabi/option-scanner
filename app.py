@@ -219,14 +219,14 @@ st.markdown("---")
 st.subheader("🖥️ Interactive TradingView Visual Screen")
 
 tv_symbols = {
-    "NIFTY 50": "NSE:NIFTY",
-    "BANK NIFTY": "NSE:BANKNIFTY",
-    "SENSEX": "BSE:SENSEX",
+    "NIFTY 50": "INDEX:NIFTY",
+    "BANK NIFTY": "INDEX:BANKNIFTY",
+    "SENSEX": "INDEX:SENSEX",
     "RELIANCE": "NSE:RELIANCE",
-    "CRUDE OIL": "MCX:CRUDEOIL1!",
-    "NATURAL GAS": "MCX:NATURALGAS1!",
-    "GOLD": "MCX:GOLD1!",
-    "SILVER": "MCX:SILVER1!",
+    "CRUDE OIL": "TVC:USOIL",
+    "NATURAL GAS": "TVC:NATURALGAS",
+    "GOLD": "TVC:GOLD",
+    "SILVER": "TVC:SILVER",
     "BITCOIN (BTC)": "BINANCE:BTCUSDT",
     "ETHEREUM (ETH)": "BINANCE:ETHUSDT",
     "SOLANA (SOL)": "BINANCE:SOLUSDT",
