@@ -197,81 +197,12 @@ else:
     st.dataframe(empty_df, use_container_width=True)
     st.info("No strong signals triggered yet. Monitoring market momentum...")
 
-# ---------------------------------------------------------
-# 5. LIVE PROFESSIONAL CANDLESTICK & INDICATOR CHART
-# ---------------------------------------------------------
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
-
-st.markdown("---")
-st.subheader("🖥️️ Live Professional Candlestick & Indicator Chart")
-
-selected_asset = st.selectbox("Select Asset for Live Visual Chart:", list(tickers.keys()))
-asset_symbol = tickers[selected_asset]
-
-try:
-    c_data = yf.download(asset_symbol, period="2d", interval=timeframe, progress=False)
-    
-    if isinstance(c_data.columns, pd.MultiIndex):
-        c_data.columns = c_data.columns.get_level_values(0)
-
-    if not c_data.empty and len(c_data) >= 15:
-        df_chart = calculate_indicators(c_data.copy()).tail(60)
-
-        # Create Subplots for Price, RSI, and Stoch RSI
-        fig = make_subplots(
-            rows=3, cols=1, 
-            shared_xaxes=True, 
-            vertical_spacing=0.04,
-            row_heights=[0.5, 0.25, 0.25],
-            subplot_titles=(f"{selected_asset} Price Movement", "RSI (14)", "Stochastic RSI")
-        )
-
-        # 1. Candlestick Chart
-        fig.add_trace(
-            go.Candlestick(
-                x=df_chart.index,
-                open=df_chart['Open'],
-                high=df_chart['High'],
-                low=df_chart['Low'],
-                close=df_chart['Close'],
-                name="Price",
-                increasing_line_color='#089981',
-                decreasing_line_color='#f23645'
-            ),
-            row=1, col=1
-        )
-
-        # 2. RSI Line
-        fig.add_trace(
-            go.Scatter(x=df_chart.index, y=df_chart['RSI'], name="RSI", line=dict(color='#ab47bc', width=2)),
-            row=2, col=1
-        )
-        fig.add_hline(y=70, line_dash="dash", line_color="red", row=2, col=1)
-        fig.add_hline(y=30, line_dash="dash", line_color="green", row=2, col=1)
-
-        # 3. Stochastic RSI (%K & %D)
-        fig.add_trace(
-            go.Scatter(x=df_chart.index, y=df_chart['Stoch_K'], name="Stoch %K", line=dict(color='#2196f3', width=1.5)),
-            row=3, col=1
-        )
-        fig.add_trace(
-            go.Scatter(x=df_chart.index, y=df_chart['Stoch_D'], name="Stoch %D", line=dict(color='#ff9800', width=1.5)),
-            row=3, col=1
-        )
-        fig.add_hline(y=80, line_dash="dash", line_color="red", row=3, col=1)
-        fig.add_hline(y=20, line_dash="dash", line_color="green", row=3, col=1)
-
-        fig.update_layout(
-            template="plotly_dark",
-            xaxis_rangeslider_visible=False,
-            height=650,
-            margin=dict(l=10, r=10, t=30, b=10),
-            showlegend=False
-        )
-
-        st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.info("Fetching market data for chart...")
-except Exception as e:
-    st.error(f"Error loading interactive chart: {e}")
+Please resolve the following AI Video and Player logic bugs completely:
+1. Page Change / Scroll Auto-Pause:
+Implement automatic pausing for all video players as soon as the user navigates away from the tab/page or scrolls the video out of view. Ensure background audio/video stops instantly on page transition.
+2. Dynamic AI Video Prompt Matching:
+Fix the prompt-to-video processing pipeline. Remove the hardcoded camera sample video fallback.
+  
+Ensure user prompts (e.g., 'West Bengal beauty place and view') dynamically fetch or generate matching scenic video clips/frames instead of repeating the same dummy camera clip.
+3. Extended Timeout & Progress Feedback:
+Extend generation timeout for 30-second AI videos and display a visual progress loader (0% to 100%) so users know the generation status."
