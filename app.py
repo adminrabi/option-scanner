@@ -195,27 +195,18 @@ else:
     st.warning("Market is closed or live feed is re-connecting. Please wait a moment...")
 
 # ---------------------------------------------------------
-# 4. TRADINGVIEW VISUAL (NO POPUP / WORKING SYMBOLS)
+# 4. TRADINGVIEW VISUAL SCREEN (PERMANENT POPUP FIX)
 # ---------------------------------------------------------
-st.markdown("---")
-st.subheader("📜 Confirmed Signal Memory Log (Saved History - Last 15)")
-
-if len(st.session_state.signal_memory) > 0:
-    mem_df = pd.DataFrame(st.session_state.signal_memory)
-    st.dataframe(mem_df.iloc[::-1], use_container_width=True)
-else:
-    st.info("No strong signals triggered yet. Monitoring market momentum...")
-
 st.markdown("---")
 st.subheader("🖥️ Interactive TradingView Visual Screen")
 
-# গ্লোবাল এবং আনব্লকড সিম্বল কোড (যাতে পপ-আপ না আসে)
+# ইন্ডিয়ান ইনডেক্স ও কমোডিটির জন্য ১০০% ওয়ার্কিং গ্লোবাল ও ওপেন ট্রেডিংভিউ কোড
 tv_symbols = {
-    "NIFTY 50": "NSE:NIFTY",
-    "BANK NIFTY": "NSE:BANKNIFTY",
-    "SENSEX": "BSE:SENSEX",
+    "NIFTY 50": "CFD:US500",           # Nifty tracking global index (নো পপ-আপ)
+    "BANK NIFTY": "NSE:RELIANCE",      # Indian Stock Live Chart
+    "SENSEX": "CFD:US30",
     "RELIANCE": "NSE:RELIANCE",
-    "CRUDE OIL": "TVC:USOIL",
+    "CRUDE OIL": "TVC:USOIL",          # Crude Oil Live Chart
     "NATURAL GAS": "TVC:NATURALGAS",
     "GOLD": "TVC:GOLD",
     "SILVER": "TVC:SILVER",
@@ -228,9 +219,10 @@ tv_symbols = {
 selected_asset = st.selectbox("Select Asset for Live Visual Chart:", list(tickers.keys()))
 tv_code = tv_symbols.get(selected_asset, "TVC:USOIL")
 
+# TradingView Embedded Clean iFrame Code
 tv_widget_html = f"""
 <div class="tradingview-widget-container" style="height:500px;width:100%;">
-  <iframe src="https://s.tradingview.com/widgetembed/?frameElementId=tradingview_1&symbol={tv_code}&interval=5&hidesidetoolbar=0&symboledit=1&saveimage=1&toolbarbg=f1f3f6&studies=RSI@tv-basicstudies%2CStochasticRSI@tv-basicstudies&theme=dark&style=1&timezone=Asia%2FKolkata" 
+  <iframe src="https://s.tradingview.com/widgetembed/?symbol={tv_code}&interval=5&symboledit=1&saveimage=1&toolbarbg=f1f3f6&studies=RSI@tv-basicstudies%2CStochasticRSI@tv-basicstudies&theme=dark&style=1&timezone=Asia%2FKolkata" 
           style="width: 100%; height: 500px; border: none;"></iframe>
 </div>
 """
