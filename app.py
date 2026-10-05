@@ -198,34 +198,61 @@ else:
     st.info("No strong signals triggered yet. Monitoring market momentum...")
 
 # ---------------------------------------------------------
-# 5. TRADINGVIEW VISUAL SCREEN (STABLE EMBEDDED ENGINE)
+# 5. NATIVE LIGHTWEIGHT CANDLESTICK CHART (NO TRADINGVIEW BLOCKS)
 # ---------------------------------------------------------
 st.markdown("---")
-st.subheader("🖥️ Interactive TradingView Visual Screen")
-
-tv_symbols = {
-    "NIFTY 50": "NSE:RELIANCE",
-    "BANK NIFTY": "NSE:HDFCBANK",
-    "SENSEX": "NSE:SBIN",
-    "RELIANCE": "NSE:RELIANCE",
-    "CRUDE OIL": "TVC:USOIL",
-    "NATURAL GAS": "TVC:NATURALGAS",
-    "GOLD": "TVC:GOLD",
-    "SILVER": "TVC:SILVER",
-    "BITCOIN (BTC)": "BINANCE:BTCUSDT",
-    "ETHEREUM (ETH)": "BINANCE:ETHUSDT",
-    "SOLANA (SOL)": "BINANCE:SOLUSDT",
-    "BINANCE COIN (BNB)": "BINANCE:BNBUSDT"
-}
+st.subheader("🖥️ Live Native Candlestick Visual Chart")
 
 selected_asset = st.selectbox("Select Asset for Live Visual Chart:", list(tickers.keys()))
-tv_code = tv_symbols.get(selected_asset, "TVC:USOIL")
+asset_symbol = tickers[selected_asset]
 
-tv_widget_html = f"""
-<div class="tradingview-widget-container" style="height:520px;width:100%;">
-  <iframe src="https://s.tradingview.com/widgetembed/?symbol={tv_code}&interval=5&theme=dark&style=1&timezone=Asia%2FKolkata&studies=RSI@tv-basicstudies%2CStochasticRSI@tv-basicstudies" 
-          style="width: 100%; height: 500px; border: none;"></iframe>
-</div>
-"""
+try:
+    c_data = yf.download(asset_symbol, period="2d", interval=timeframe, progress=False)
+    if isinstance(c_data.columns, pd.MultiIndex):
+        c_data.columns = c_data.columns.get_level_values(0)
 
-st.components.v1.html(tv_widget_html, height=530)
+    if not c_data.empty and len(c_data) >= 10:
+        c_df = calculate_indicators(c_data.copy()).tail(50)
+
+        # Convert candles to JS Lightweight Chart format
+        chart_series = []
+        for idx, row in c_df.iterrows():
+            timestamp = int(idx.timestamp())
+            chart_series.append({
+                "time": timestamp,
+                "open": float(row['Open']),
+                "high": float(row['High']),
+                "low": float(row['Low']),
+                "close": float(row['Close'])
+            })
+
+        import json
+        json_candles = json.dumps(chart_series)
+
+        chart_html = f"""
+        <div id="tv_native_chart" style="width: 100%; height: 480px; background-color: #131722; border-radius: 8px;"></div>
+        <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+        <script>
+            const chartOptions = {{
+                layout: {{ backgroundColor: '#131722', textColor: '#d1d4dc' }},
+                grid: {{ vertLines: {{ color: '#2B2B43' }}, horzLines: {{ color: '#2B2B43' }} }},
+                crosshair: {{ mode: 0 }},
+                priceScale: {{ borderColor: '#485c7b' }},
+                timeScale: {{ borderColor: '#485c7b', timeVisible: true, secondsVisible: false }}
+            }};
+            const container = document.getElementById('tv_native_chart');
+            const chart = LightweightCharts.createChart(container, chartOptions);
+            const candlestickSeries = chart.addCandlestickSeries({{
+                upColor: '#089981', downColor: '#f23645',
+                borderVisible: false, wickUpColor: '#089981', wickDownColor: '#f23645'
+            }});
+            const data = {json_candles};
+            candlestickSeries.setData(data);
+            chart.timeScale().fitContent();
+        </script>
+        """
+        st.components.v1.html(chart_html, height=500)
+    else:
+        st.info("Loading chart data...")
+except Exception as e:
+    st.error(f"Error loading native chart: {e}")
