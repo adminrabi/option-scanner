@@ -211,7 +211,7 @@ st.subheader("🖥️ Interactive TradingView Visual Screen")
 
 # গ্লোবাল এবং আনব্লকড সিম্বল কোড (যাতে পপ-আপ না আসে)
 tv_symbols = {
-    "NIFTY 50": "GLOBALDATA:NIFTY",
+    "NIFTY 50": "NSE:NIFTY",
     "BANK NIFTY": "NSE:BANKNIFTY",
     "SENSEX": "BSE:SENSEX",
     "RELIANCE": "NSE:RELIANCE",
