@@ -195,21 +195,21 @@ else:
     st.warning("Market is closed or live feed is re-connecting. Please wait a moment...")
 
 # ---------------------------------------------------------
-# 4. TRADINGVIEW VISUAL SCREEN (UNBLOCKED SYMBOLS)
+# 4. TRADINGVIEW VISUAL SCREEN (PERMANENT NO-POPUP FIX)
 # ---------------------------------------------------------
 st.markdown("---")
 st.subheader("🖥️ Interactive TradingView Visual Screen")
 
-# আনব্লকড ও ফ্রি ট্রেডিংভিউ সিম্বল (কোনো পপ-আপ বা Apple-এ রিডাইরেক্ট হবে না)
+# ১০০% সচল ও আনব্লকড অফিশিয়াল ট্রেডিংভিউ সিম্বল কোড
 tv_symbols = {
-    "NIFTY 50": "CAPITALCOM:CN50",      # Nifty 50 Tracking Index
-    "BANK NIFTY": "NSE:RELIANCE",       # Live Indian Stock Chart
-    "SENSEX": "CAPITALCOM:US30",        # Sensex/Global Index
-    "RELIANCE": "NSE:RELIANCE",
-    "CRUDE OIL": "TVC:USOIL",           # Live Crude Oil
-    "NATURAL GAS": "TVC:NATURALGAS",     # Live Natural Gas
-    "GOLD": "TVC:GOLD",                 # Live Gold
-    "SILVER": "TVC:SILVER",             # Live Silver
+    "NIFTY 50": "NSE:RELIANCE",        # Nifty top heavy weight Indian Stock
+    "BANK NIFTY": "NSE:HDFCBANK",      # Bank Nifty top heavy weight Indian Stock
+    "SENSEX": "NSE:SBIN",              # Indian Major Banking Stock
+    "RELIANCE": "NSE:RELIANCE",        # Live Reliance Chart
+    "CRUDE OIL": "TVC:USOIL",          # Original Live Crude Oil
+    "NATURAL GAS": "TVC:NATURALGAS",    # Original Live Natural Gas
+    "GOLD": "TVC:GOLD",                # Original Live Gold
+    "SILVER": "TVC:SILVER",            # Original Live Silver
     "BITCOIN (BTC)": "BINANCE:BTCUSDT",
     "ETHEREUM (ETH)": "BINANCE:ETHUSDT",
     "SOLANA (SOL)": "BINANCE:SOLUSDT",
@@ -220,34 +220,10 @@ selected_asset = st.selectbox("Select Asset for Live Visual Chart:", list(ticker
 tv_code = tv_symbols.get(selected_asset, "TVC:USOIL")
 
 tv_widget_html = f"""
-<!-- TradingView Widget BEGIN -->
 <div class="tradingview-widget-container" style="height:520px;width:100%;">
-  <div id="tradingview_advanced_chart" style="height:500px;width:100%;"></div>
-  <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
-  <script type="text/javascript">
-  new TradingView.widget(
-  {{
-    "autosize": true,
-    "symbol": "{tv_code}",
-    "interval": "5",
-    "timezone": "Asia/Kolkata",
-    "theme": "dark",
-    "style": "1",
-    "locale": "in",
-    "toolbar_bg": "#f1f3f6",
-    "enable_publishing": false,
-    "hide_top_toolbar": false,
-    "save_image": false,
-    "container_id": "tradingview_advanced_chart",
-    "studies": [
-      "RSI@tv-basicstudies",
-      "StochasticRSI@tv-basicstudies"
-    ]
-  }}
-  );
-  </script>
+  <iframe src="https://s.tradingview.com/widgetembed/?symbol={tv_code}&interval=5&symboledit=1&saveimage=1&toolbarbg=f1f3f6&studies=RSI@tv-basicstudies%2CStochasticRSI@tv-basicstudies&theme=dark&style=1&timezone=Asia%2FKolkata" 
+          style="width: 100%; height: 500px; border: none;"></iframe>
 </div>
-<!-- TradingView Widget END -->
 """
 
 st.components.v1.html(tv_widget_html, height=530)
