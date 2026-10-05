@@ -198,10 +198,13 @@ else:
     st.info("No strong signals triggered yet. Monitoring market momentum...")
 
 # ---------------------------------------------------------
-# 5. LIVE INTERACTIVE CANDLESTICK CHART (100% WORKING FIX)
+# 5. LIVE PROFESSIONAL CANDLESTICK & INDICATOR CHART
 # ---------------------------------------------------------
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+
 st.markdown("---")
-st.subheader("🖥️ Live Interactive Candlestick Chart")
+st.subheader("🖥️️ Live Professional Candlestick & Indicator Chart")
 
 selected_asset = st.selectbox("Select Asset for Live Visual Chart:", list(tickers.keys()))
 asset_symbol = tickers[selected_asset]
@@ -212,43 +215,63 @@ try:
     if isinstance(c_data.columns, pd.MultiIndex):
         c_data.columns = c_data.columns.get_level_values(0)
 
-    if not c_data.empty and len(c_data) >= 5:
-        c_df = c_data.tail(60)
+    if not c_data.empty and len(c_data) >= 15:
+        df_chart = calculate_indicators(c_data.copy()).tail(60)
 
-        # HTML and CSS Chart Generation (No JS Block/No White Screen)
-        candles_html = ""
-        for idx, row in c_df.iterrows():
-            o, h, l, c = row['Open'], row['High'], row['Low'], row['Close']
-            color = "#089981" if c >= o else "#f23645"
-            time_str = idx.strftime('%H:%M')
-            
-            candles_html += f"""
-            <div style="display:inline-block; margin:0 2px; text-align:center; font-size:10px; color:#aaa;">
-                <div style="height:100px; display:flex; flex-direction:column; align-items:center; justify-content:center;">
-                    <div style="font-weight:bold; color:{color};">{round(c, 1)}</div>
-                    <div style="width:2px; height:15px; background-color:{color};"></div>
-                    <div style="width:12px; height:35px; background-color:{color}; border-radius:2px;"></div>
-                    <div style="width:2px; height:15px; background-color:{color};"></div>
-                </div>
-                <div>{time_str}</div>
-            </div>
-            """
-
-        # Custom Streamlit HTML View with Dark Theme
-        st.markdown(
-            f"""
-            <div style="background-color:#131722; padding:20px; border-radius:10px; border:1px solid #2a2e39;">
-                <div style="color:#d1d4dc; font-size:16px; font-weight:bold; margin-bottom:10px;">
-                    📈 {selected_asset} Live Price Movement ({timeframe})
-                </div>
-                <div style="overflow-x:auto; white-space:nowrap; padding:10px 0;">
-                    {candles_html}
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True
+        # Create Subplots for Price, RSI, and Stoch RSI
+        fig = make_subplots(
+            rows=3, cols=1, 
+            shared_xaxes=True, 
+            vertical_spacing=0.04,
+            row_heights=[0.5, 0.25, 0.25],
+            subplot_titles=(f"{selected_asset} Price Movement", "RSI (14)", "Stochastic RSI")
         )
+
+        # 1. Candlestick Chart
+        fig.add_trace(
+            go.Candlestick(
+                x=df_chart.index,
+                open=df_chart['Open'],
+                high=df_chart['High'],
+                low=df_chart['Low'],
+                close=df_chart['Close'],
+                name="Price",
+                increasing_line_color='#089981',
+                decreasing_line_color='#f23645'
+            ),
+            row=1, col=1
+        )
+
+        # 2. RSI Line
+        fig.add_trace(
+            go.Scatter(x=df_chart.index, y=df_chart['RSI'], name="RSI", line=dict(color='#ab47bc', width=2)),
+            row=2, col=1
+        )
+        fig.add_hline(y=70, line_dash="dash", line_color="red", row=2, col=1)
+        fig.add_hline(y=30, line_dash="dash", line_color="green", row=2, col=1)
+
+        # 3. Stochastic RSI (%K & %D)
+        fig.add_trace(
+            go.Scatter(x=df_chart.index, y=df_chart['Stoch_K'], name="Stoch %K", line=dict(color='#2196f3', width=1.5)),
+            row=3, col=1
+        )
+        fig.add_trace(
+            go.Scatter(x=df_chart.index, y=df_chart['Stoch_D'], name="Stoch %D", line=dict(color='#ff9800', width=1.5)),
+            row=3, col=1
+        )
+        fig.add_hline(y=80, line_dash="dash", line_color="red", row=3, col=1)
+        fig.add_hline(y=20, line_dash="dash", line_color="green", row=3, col=1)
+
+        fig.update_layout(
+            template="plotly_dark",
+            xaxis_rangeslider_visible=False,
+            height=650,
+            margin=dict(l=10, r=10, t=30, b=10),
+            showlegend=False
+        )
+
+        st.plotly_chart(fig, use_container_width=True)
     else:
         st.info("Fetching market data for chart...")
 except Exception as e:
-    st.error(f"Unable to load chart data: {e}")
+    st.error(f"Error loading interactive chart: {e}")
