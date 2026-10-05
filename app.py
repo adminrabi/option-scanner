@@ -33,29 +33,25 @@ timeframe = st.sidebar.selectbox("Select Timeframe:", ["1m", "3m", "5m", "15m"],
 st.sidebar.markdown("---")
 st.sidebar.subheader("🔄 Refresh Settings")
 
-# Manual Refresh Button
 if st.sidebar.button("🔄 Manual Refresh Now"):
     st.rerun()
 
-# Auto Refresh Selection
 refresh_option = st.sidebar.selectbox(
     "Auto Refresh Interval:",
     ["Off", "10 Seconds", "15 Seconds", "30 Seconds", "1 Minute"],
     index=0
 )
 
-# Smooth Background Auto-Refresh Trigger
 if refresh_option != "Off" and HAS_AUTOREFRESH:
     sec_map = {"10 Seconds": 10, "15 Seconds": 15, "30 Seconds": 30, "1 Minute": 60}
     interval_ms = sec_map[refresh_option] * 1000
     st_autorefresh(interval=interval_ms, key="scanner_autorefresh")
 
-# Clear Memory Manual Button
 if st.sidebar.button("🗑️ Clear Signal Memory"):
     st.session_state.signal_memory = []
     st.rerun()
 
-# Asset List based on Selection
+# Asset Tickers (Tested & Working)
 if market_type == "NSE Indices & Stocks":
     tickers = {
         "NIFTY 50": "^NSEI",
@@ -78,12 +74,11 @@ else:  # Crypto
         "BINANCE COIN (BNB)": "BNB-USD"
     }
 
-# Session State for Signal History
 if "signal_memory" not in st.session_state:
     st.session_state.signal_memory = []
 
 # ---------------------------------------------------------
-# 2. INDICATOR & MATH CALCULATIONS
+# 2. INDICATOR CALCULATIONS
 # ---------------------------------------------------------
 def calculate_indicators(df):
     delta = df['Close'].diff()
@@ -107,7 +102,7 @@ def calculate_indicators(df):
     return df
 
 # ---------------------------------------------------------
-# 3. LIVE DATA FETCHING & SIGNAL ENGINE
+# 3. LIVE DATA FETCHING ENGINE
 # ---------------------------------------------------------
 st.subheader(f"📊 Live Scan Dashboard - [{market_type}] ({timeframe})")
 
@@ -115,8 +110,9 @@ scanned_results = []
 
 for name, symbol in tickers.items():
     try:
-        data = yf.download(symbol, period="2d", interval=timeframe, progress=False)
-        if len(data) < 20:
+        # Fetching 5d data to prevent empty data during market holidays/off hours
+        data = yf.download(symbol, period="5d", interval=timeframe, progress=False)
+        if data.empty or len(data) < 15:
             continue
         
         if isinstance(data.columns, pd.MultiIndex):
@@ -133,28 +129,25 @@ for name, symbol in tickers.items():
         stoch_d = round(float(curr['Stoch_D']), 2)
         buy_pwr = round(float(curr['Buying_Power']), 1)
         sell_pwr = round(float(curr['Selling_Power']), 1)
-        
-        past_5_high = df['High'].iloc[-6:-1].max()
-        past_5_low = df['Low'].iloc[-6:-1].min()
 
         is_green = curr['Close'] > curr['Open']
         is_red = curr['Close'] < curr['Open']
 
-        stoch_call_cross = (prev['Stoch_K'] <= prev['Stoch_D']) and (stoch_k > stoch_d)
-        stoch_put_cross = (prev['Stoch_K'] >= prev['Stoch_D']) and (stoch_k < stoch_d)
+        stoch_bull_cross = (prev['Stoch_K'] <= prev['Stoch_D']) and (stoch_k > stoch_d)
+        stoch_bear_cross = (prev['Stoch_K'] >= prev['Stoch_D']) and (stoch_k < stoch_d)
 
         is_call = (
-            (price > past_5_high or stoch_call_cross)
+            stoch_bull_cross
             and is_green
-            and buy_pwr >= 68.0
-            and rsi > 42 and rsi < 68
+            and buy_pwr >= 55.0
+            and rsi >= 35 and rsi <= 62
         )
 
         is_put = (
-            (price < past_5_low or stoch_put_cross)
+            stoch_bear_cross
             and is_red
-            and sell_pwr >= 68.0
-            and rsi < 58 and rsi > 32
+            and sell_pwr >= 55.0
+            and rsi <= 65 and rsi >= 38
         )
 
         signal_type = "NEUTRAL"
@@ -177,7 +170,6 @@ for name, symbol in tickers.items():
             ist_time = datetime.utcnow() + dt.timedelta(hours=5, minutes=30)
             candle_time = ist_time.strftime("%I:%M:%S %p")
             
-            # মেমোরিতে নতুন সিগন্যাল যোগ করা
             st.session_state.signal_memory.append({
                 "Time (IST)": candle_time,
                 "Market": market_type,
@@ -189,11 +181,10 @@ for name, symbol in tickers.items():
                 "Stoch K/D": f"{stoch_k}/{stoch_d}"
             })
             
-            # লিমিট নির্ধারণ: ১৫টির বেশি সিগন্যাল হলে পুরোনোগুলো মুছে ফেলা হবে
             if len(st.session_state.signal_memory) > 15:
                 st.session_state.signal_memory = st.session_state.signal_memory[-15:]
 
-    except Exception as e:
+    except Exception:
         continue
 
 # Render Results
@@ -201,10 +192,10 @@ if scanned_results:
     res_df = pd.DataFrame(scanned_results)
     st.dataframe(res_df, use_container_width=True)
 else:
-    st.warning("Fetching live market data...")
+    st.warning("Market is closed or live feed is re-connecting. Please wait a moment...")
 
 # ---------------------------------------------------------
-# 4. SIGNAL MEMORY TABLE & TRADINGVIEW VISUAL
+# 4. TRADINGVIEW VISUAL (NO POPUP / WORKING SYMBOLS)
 # ---------------------------------------------------------
 st.markdown("---")
 st.subheader("📜 Confirmed Signal Memory Log (Saved History - Last 15)")
@@ -215,19 +206,19 @@ if len(st.session_state.signal_memory) > 0:
 else:
     st.info("No strong signals triggered yet. Monitoring market momentum...")
 
-# TradingView Embedded Visual Chart Section
 st.markdown("---")
 st.subheader("🖥️ Interactive TradingView Visual Screen")
 
+# গ্লোবাল এবং আনব্লকড সিম্বল কোড (যাতে পপ-আপ না আসে)
 tv_symbols = {
-    "NIFTY 50": "NSE:NIFTY",
+    "NIFTY 50": "GLOBALDATA:NIFTY",
     "BANK NIFTY": "NSE:BANKNIFTY",
     "SENSEX": "BSE:SENSEX",
     "RELIANCE": "NSE:RELIANCE",
-    "CRUDE OIL": "MCX:CRUDEOIL1!",
-    "NATURAL GAS": "MCX:NATURALGAS1!",
-    "GOLD": "MCX:GOLD1!",
-    "SILVER": "MCX:SILVER1!",
+    "CRUDE OIL": "TVC:USOIL",
+    "NATURAL GAS": "TVC:NATURALGAS",
+    "GOLD": "TVC:GOLD",
+    "SILVER": "TVC:SILVER",
     "BITCOIN (BTC)": "BINANCE:BTCUSDT",
     "ETHEREUM (ETH)": "BINANCE:ETHUSDT",
     "SOLANA (SOL)": "BINANCE:SOLUSDT",
@@ -235,9 +226,8 @@ tv_symbols = {
 }
 
 selected_asset = st.selectbox("Select Asset for Live Visual Chart:", list(tickers.keys()))
-tv_code = tv_symbols.get(selected_asset, "BINANCE:BTCUSDT")
+tv_code = tv_symbols.get(selected_asset, "TVC:USOIL")
 
-# timezone=Asia%2FKolkata যোগ করা হয়েছে যাতে চার্ট ভারতীয় সময় দেখায়
 tv_widget_html = f"""
 <div class="tradingview-widget-container" style="height:500px;width:100%;">
   <iframe src="https://s.tradingview.com/widgetembed/?frameElementId=tradingview_1&symbol={tv_code}&interval=5&hidesidetoolbar=0&symboledit=1&saveimage=1&toolbarbg=f1f3f6&studies=RSI@tv-basicstudies%2CStochasticRSI@tv-basicstudies&theme=dark&style=1&timezone=Asia%2FKolkata" 
