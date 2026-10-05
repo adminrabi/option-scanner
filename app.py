@@ -51,7 +51,7 @@ if st.sidebar.button("🗑️ Clear Signal Memory"):
     st.session_state.signal_memory = []
     st.rerun()
 
-# Asset Tickers (Tested & Working)
+# Asset Tickers
 if market_type == "NSE Indices & Stocks":
     tickers = {
         "NIFTY 50": "^NSEI",
@@ -110,7 +110,6 @@ scanned_results = []
 
 for name, symbol in tickers.items():
     try:
-        # Fetching 5d data to prevent empty data during market holidays/off hours
         data = yf.download(symbol, period="5d", interval=timeframe, progress=False)
         if data.empty or len(data) < 15:
             continue
@@ -136,19 +135,9 @@ for name, symbol in tickers.items():
         stoch_bull_cross = (prev['Stoch_K'] <= prev['Stoch_D']) and (stoch_k > stoch_d)
         stoch_bear_cross = (prev['Stoch_K'] >= prev['Stoch_D']) and (stoch_k < stoch_d)
 
-        is_call = (
-            stoch_bull_cross
-            and is_green
-            and buy_pwr >= 55.0
-            and rsi >= 35 and rsi <= 62
-        )
-
-        is_put = (
-            stoch_bear_cross
-            and is_red
-            and sell_pwr >= 55.0
-            and rsi <= 65 and rsi >= 38
-        )
+        # Signal Logic
+        is_call = stoch_bull_cross and is_green and buy_pwr >= 50.0
+        is_put = stoch_bear_cross and is_red and sell_pwr >= 50.0
 
         signal_type = "NEUTRAL"
         if is_call:
@@ -192,24 +181,38 @@ if scanned_results:
     res_df = pd.DataFrame(scanned_results)
     st.dataframe(res_df, use_container_width=True)
 else:
-    st.warning("Market is closed or live feed is re-connecting. Please wait a moment...")
+    st.warning("Fetching live market data... Please wait a moment.")
 
 # ---------------------------------------------------------
-# 4. TRADINGVIEW VISUAL SCREEN (PERMANENT NO-POPUP FIX)
+# 4. SIGNAL MEMORY TABLE (PERMANENTLY VISIBLE)
+# ---------------------------------------------------------
+st.markdown("---")
+st.subheader("📜 Confirmed Signal Memory Log (Saved History - Last 15)")
+
+if len(st.session_state.signal_memory) > 0:
+    mem_df = pd.DataFrame(st.session_state.signal_memory)
+    st.dataframe(mem_df.iloc[::-1], use_container_width=True)
+else:
+    # স্থায়ী ফাঁকা টেবিল যাতে মেমোরি সেকশন গায়েব না হয়
+    empty_df = pd.DataFrame(columns=["Time (IST)", "Market", "Asset", "Signal", "Price", "RSI", "Buy/Sell Power", "Stoch K/D"])
+    st.dataframe(empty_df, use_container_width=True)
+    st.info("No strong signals triggered yet. Monitoring market momentum...")
+
+# ---------------------------------------------------------
+# 5. TRADINGVIEW VISUAL SCREEN (POPUP FIXED)
 # ---------------------------------------------------------
 st.markdown("---")
 st.subheader("🖥️ Interactive TradingView Visual Screen")
 
-# ১০০% সচল ও আনব্লকড অফিশিয়াল ট্রেডিংভিউ সিম্বল কোড
 tv_symbols = {
-    "NIFTY 50": "NSE:RELIANCE",        # Nifty top heavy weight Indian Stock
-    "BANK NIFTY": "NSE:HDFCBANK",      # Bank Nifty top heavy weight Indian Stock
-    "SENSEX": "NSE:SBIN",              # Indian Major Banking Stock
-    "RELIANCE": "NSE:RELIANCE",        # Live Reliance Chart
-    "CRUDE OIL": "TVC:USOIL",          # Original Live Crude Oil
-    "NATURAL GAS": "TVC:NATURALGAS",    # Original Live Natural Gas
-    "GOLD": "TVC:GOLD",                # Original Live Gold
-    "SILVER": "TVC:SILVER",            # Original Live Silver
+    "NIFTY 50": "NSE:RELIANCE",
+    "BANK NIFTY": "NSE:HDFCBANK",
+    "SENSEX": "NSE:SBIN",
+    "RELIANCE": "NSE:RELIANCE",
+    "CRUDE OIL": "TVC:USOIL",
+    "NATURAL GAS": "TVC:NATURALGAS",
+    "GOLD": "TVC:GOLD",
+    "SILVER": "TVC:SILVER",
     "BITCOIN (BTC)": "BINANCE:BTCUSDT",
     "ETHEREUM (ETH)": "BINANCE:ETHUSDT",
     "SOLANA (SOL)": "BINANCE:SOLUSDT",
@@ -221,7 +224,7 @@ tv_code = tv_symbols.get(selected_asset, "TVC:USOIL")
 
 tv_widget_html = f"""
 <div class="tradingview-widget-container" style="height:520px;width:100%;">
-  <iframe src="https://s.tradingview.com/widgetembed/?symbol={tv_code}&interval=5&symboledit=1&saveimage=1&toolbarbg=f1f3f6&studies=RSI@tv-basicstudies%2CStochasticRSI@tv-basicstudies&theme=dark&style=1&timezone=Asia%2FKolkata" 
+  <iframe src="https://s.tradingview.com/widgetembed/?symbol={tv_code}&interval=5&theme=dark&style=1&timezone=Asia%2FKolkata&studies=RSI@tv-basicstudies%2CStochasticRSI@tv-basicstudies" 
           style="width: 100%; height: 500px; border: none;"></iframe>
 </div>
 """
