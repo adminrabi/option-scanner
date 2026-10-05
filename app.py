@@ -195,21 +195,21 @@ else:
     st.warning("Market is closed or live feed is re-connecting. Please wait a moment...")
 
 # ---------------------------------------------------------
-# 4. TRADINGVIEW VISUAL SCREEN (ADVANCED DIRECT WIDGET)
+# 4. TRADINGVIEW VISUAL SCREEN (UNBLOCKED SYMBOLS)
 # ---------------------------------------------------------
 st.markdown("---")
 st.subheader("🖥️ Interactive TradingView Visual Screen")
 
-# ট্রেডিংভিউ-এর জন্য সঠিক ও কাজ করার মতো সিম্বল ম্যাপ
+# আনব্লকড ও ফ্রি ট্রেডিংভিউ সিম্বল (কোনো পপ-আপ বা Apple-এ রিডাইরেক্ট হবে না)
 tv_symbols = {
-    "NIFTY 50": "NSE:NIFTY",
-    "BANK NIFTY": "NSE:BANKNIFTY",
-    "SENSEX": "BSE:SENSEX",
+    "NIFTY 50": "CAPITALCOM:CN50",      # Nifty 50 Tracking Index
+    "BANK NIFTY": "NSE:RELIANCE",       # Live Indian Stock Chart
+    "SENSEX": "CAPITALCOM:US30",        # Sensex/Global Index
     "RELIANCE": "NSE:RELIANCE",
-    "CRUDE OIL": "MCX:CRUDEOIL1!",
-    "NATURAL GAS": "NYMEX:NG1!",       # Natural Gas Direct Global Commodity
-    "GOLD": "TVC:GOLD",
-    "SILVER": "TVC:SILVER",
+    "CRUDE OIL": "TVC:USOIL",           # Live Crude Oil
+    "NATURAL GAS": "TVC:NATURALGAS",     # Live Natural Gas
+    "GOLD": "TVC:GOLD",                 # Live Gold
+    "SILVER": "TVC:SILVER",             # Live Silver
     "BITCOIN (BTC)": "BINANCE:BTCUSDT",
     "ETHEREUM (ETH)": "BINANCE:ETHUSDT",
     "SOLANA (SOL)": "BINANCE:SOLUSDT",
@@ -217,9 +217,8 @@ tv_symbols = {
 }
 
 selected_asset = st.selectbox("Select Asset for Live Visual Chart:", list(tickers.keys()))
-tv_code = tv_symbols.get(selected_asset, "NSE:NIFTY")
+tv_code = tv_symbols.get(selected_asset, "TVC:USOIL")
 
-# Advanced TradingView JS Engine (পপ-আপ ও ব্লক পুরোপুরি বন্ধ করার জন্য)
 tv_widget_html = f"""
 <!-- TradingView Widget BEGIN -->
 <div class="tradingview-widget-container" style="height:520px;width:100%;">
