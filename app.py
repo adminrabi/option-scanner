@@ -81,15 +81,17 @@ if "signal_memory" not in st.session_state:
     st.session_state.signal_memory = []
 
 # ---------------------------------------------------------
-# 2. INDICATOR CALCULATIONS
+# 2. INDICATOR CALCULATIONS (RSI, STOCH RSI & AWESOME OSCILLATOR)
 # ---------------------------------------------------------
 def calculate_indicators(df):
+    # RSI
     delta = df['Close'].diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
     rs = gain / (loss + 1e-10)
     df['RSI'] = 100 - (100 / (1 + rs))
 
+    # Stochastic RSI
     rsi = df['RSI']
     rsi_min = rsi.rolling(window=14).min()
     rsi_max = rsi.rolling(window=14).max()
@@ -97,10 +99,16 @@ def calculate_indicators(df):
     df['Stoch_K'] = stoch_rsi.rolling(window=3).mean() * 100
     df['Stoch_D'] = df['Stoch_K'].rolling(window=3).mean()
 
+    # Buying & Selling Power
     candle_range = df['High'] - df['Low']
     candle_range = candle_range.replace(0, 1e-10)
     df['Buying_Power'] = ((df['Close'] - df['Low']) / candle_range) * 100
     df['Selling_Power'] = ((df['High'] - df['Close']) / candle_range) * 100
+
+    # Awesome Oscillator (AO) Calculation
+    median_price = (df['High'] + df['Low']) / 2
+    ao = median_price.rolling(window=5).mean() - median_price.rolling(window=34).mean()
+    df['AO'] = ao
 
     return df
 
@@ -119,7 +127,7 @@ scanned_results = []
 for name, symbol in tickers.items():
     try:
         data = fetch_data_safe(symbol, timeframe)
-        if data.empty or len(data) < 10:
+        if data.empty or len(data) < 35:
             continue
         
         if isinstance(data.columns, pd.MultiIndex):
@@ -136,6 +144,7 @@ for name, symbol in tickers.items():
         stoch_d = round(float(curr['Stoch_D']), 2)
         buy_pwr = round(float(curr['Buying_Power']), 1)
         sell_pwr = round(float(curr['Selling_Power']), 1)
+        ao_val = round(float(curr['AO']), 2)
 
         is_green = curr['Close'] > curr['Open']
         is_red = curr['Close'] < curr['Open']
@@ -158,6 +167,7 @@ for name, symbol in tickers.items():
             "Price": price,
             "RSI": rsi,
             "Stoch %K/%D": f"{stoch_k} / {stoch_d}",
+            "AO Value": ao_val,
             "Buy Power %": f"{buy_pwr}%",
             "Sell Power %": f"{sell_pwr}%",
             "Signal": signal_type
@@ -180,6 +190,7 @@ for name, symbol in tickers.items():
                     "Signal": signal_type,
                     "Price": price,
                     "RSI": rsi,
+                    "AO": ao_val,
                     "Buy/Sell Power": f"B: {buy_pwr}% | S: {sell_pwr}%",
                     "Stoch K/D": f"{stoch_k}/{stoch_d}"
                 })
@@ -203,7 +214,6 @@ else:
 st.markdown("---")
 st.subheader("📜 Confirmed Signal Memory Log (Saved History - Last 15)")
 
-# Create fixed 15 rows dataframe logic
 mem_list = st.session_state.signal_memory[::-1]
 fixed_rows = []
 
@@ -218,6 +228,7 @@ for i in range(15):
             "Signal": "-",
             "Price": "-",
             "RSI": "-",
+            "AO": "-",
             "Buy/Sell Power": "-",
             "Stoch K/D": "-"
         })
@@ -226,7 +237,7 @@ mem_df = pd.DataFrame(fixed_rows)
 st.dataframe(mem_df, use_container_width=True, height=250)
 
 # ---------------------------------------------------------
-# 5. LIVE PROFESSIONAL CANDLESTICK & INDICATORS (COMPACT SIZE)
+# 5. LIVE PROFESSIONAL CANDLESTICK & INDICATORS WITH AO (COMPACT)
 # ---------------------------------------------------------
 st.markdown("---")
 st.subheader("🖥️ Live Professional Candlestick & Indicator Chart")
@@ -240,7 +251,7 @@ try:
     if isinstance(c_data.columns, pd.MultiIndex):
         c_data.columns = c_data.columns.get_level_values(0)
 
-    if not c_data.empty and len(c_data) >= 10:
+    if not c_data.empty and len(c_data) >= 35:
         df_chart = calculate_indicators(c_data.copy()).tail(50)
 
         # UTC to IST Timezone Conversion
@@ -250,13 +261,13 @@ try:
         else:
             df_chart.index = df_chart.index.tz_convert('Asia/Kolkata')
 
-        # Create Compact Subplots
+        # Create 4 Subplots (Price, RSI, Stoch RSI, Awesome Oscillator)
         fig = make_subplots(
-            rows=3, cols=1, 
+            rows=4, cols=1, 
             shared_xaxes=True, 
             vertical_spacing=0.03,
-            row_heights=[0.55, 0.225, 0.225],
-            subplot_titles=(f"{selected_asset} Price Movement", "RSI (14)", "Stochastic RSI")
+            row_heights=[0.45, 0.18, 0.18, 0.19],
+            subplot_titles=(f"{selected_asset} Price Movement", "RSI (14)", "Stochastic RSI", "Awesome Oscillator (AO)")
         )
 
         # 1. Candlestick Chart
@@ -294,11 +305,33 @@ try:
         fig.add_hline(y=80, line_dash="dash", line_color="red", row=3, col=1)
         fig.add_hline(y=20, line_dash="dash", line_color="green", row=3, col=1)
 
-        # Layout Settings (450px Height Fix)
+        # 4. Awesome Oscillator (Bar Chart Histogram with Green/Red Color)
+        ao_colors = []
+        for i in range(len(df_chart)):
+            if i == 0:
+                ao_colors.append('#089981')
+            else:
+                if df_chart['AO'].iloc[i] >= df_chart['AO'].iloc[i-1]:
+                    ao_colors.append('#089981') # Green
+                else:
+                    ao_colors.append('#f23645') # Red
+
+        fig.add_trace(
+            go.Bar(
+                x=df_chart.index,
+                y=df_chart['AO'],
+                name="AO",
+                marker_color=ao_colors
+            ),
+            row=4, col=1
+        )
+        fig.add_hline(y=0, line_dash="solid", line_color="gray", row=4, col=1)
+
+        # Layout Settings
         fig.update_layout(
             template="plotly_dark",
             xaxis_rangeslider_visible=False,
-            height=450,
+            height=550,
             margin=dict(l=5, r=5, t=25, b=5),
             showlegend=False,
             hovermode="x unified"
@@ -307,7 +340,7 @@ try:
         fig.update_xaxes(
             type='date',
             tickformat="%I:%M %p",
-            row=3, col=1
+            row=4, col=1
         )
 
         st.plotly_chart(fig, use_container_width=True)
