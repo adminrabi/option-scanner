@@ -76,6 +76,7 @@ else:  # Crypto
         "BINANCE COIN (BNB)": "BNB-USD"
     }
 
+# Signal Memory Initialization
 if "signal_memory" not in st.session_state:
     st.session_state.signal_memory = []
 
@@ -103,7 +104,7 @@ def calculate_indicators(df):
 
     return df
 
-# Helper to dynamically fetch data
+@st.cache_data(ttl=5)
 def fetch_data_safe(symbol, tf):
     fetch_p = "1d" if tf in ["1m", "3m"] else "5d"
     return yf.download(symbol, period=fetch_p, interval=tf, progress=False)
@@ -166,19 +167,25 @@ for name, symbol in tickers.items():
             ist_time = datetime.utcnow() + dt.timedelta(hours=5, minutes=30)
             candle_time = ist_time.strftime("%I:%M:%S %p")
             
-            st.session_state.signal_memory.append({
-                "Time (IST)": candle_time,
-                "Market": market_type,
-                "Asset": name,
-                "Signal": signal_type,
-                "Price": price,
-                "RSI": rsi,
-                "Buy/Sell Power": f"B: {buy_pwr}% | S: {sell_pwr}%",
-                "Stoch K/D": f"{stoch_k}/{stoch_d}"
-            })
+            already_exists = any(
+                item['Asset'] == name and item['Time (IST)'] == candle_time 
+                for item in st.session_state.signal_memory
+            )
             
-            if len(st.session_state.signal_memory) > 15:
-                st.session_state.signal_memory = st.session_state.signal_memory[-15:]
+            if not already_exists:
+                st.session_state.signal_memory.append({
+                    "Time (IST)": candle_time,
+                    "Market": market_type,
+                    "Asset": name,
+                    "Signal": signal_type,
+                    "Price": price,
+                    "RSI": rsi,
+                    "Buy/Sell Power": f"B: {buy_pwr}% | S: {sell_pwr}%",
+                    "Stoch K/D": f"{stoch_k}/{stoch_d}"
+                })
+                
+                if len(st.session_state.signal_memory) > 15:
+                    st.session_state.signal_memory = st.session_state.signal_memory[-15:]
 
     except Exception:
         continue
@@ -191,21 +198,35 @@ else:
     st.warning("Fetching live market data... Please wait a moment.")
 
 # ---------------------------------------------------------
-# 4. SIGNAL MEMORY TABLE (PERMANENTLY VISIBLE)
+# 4. SIGNAL MEMORY TABLE (FIXED 15 SLOTS - NO SHAKING)
 # ---------------------------------------------------------
 st.markdown("---")
 st.subheader("📜 Confirmed Signal Memory Log (Saved History - Last 15)")
 
-if len(st.session_state.signal_memory) > 0:
-    mem_df = pd.DataFrame(st.session_state.signal_memory)
-    st.dataframe(mem_df.iloc[::-1], use_container_width=True)
-else:
-    empty_df = pd.DataFrame(columns=["Time (IST)", "Market", "Asset", "Signal", "Price", "RSI", "Buy/Sell Power", "Stoch K/D"])
-    st.dataframe(empty_df, use_container_width=True)
-    st.info("No strong signals triggered yet. Monitoring market momentum...")
+# Create fixed 15 rows dataframe logic
+mem_list = st.session_state.signal_memory[::-1]
+fixed_rows = []
+
+for i in range(15):
+    if i < len(mem_list):
+        fixed_rows.append(mem_list[i])
+    else:
+        fixed_rows.append({
+            "Time (IST)": "-",
+            "Market": "-",
+            "Asset": "-",
+            "Signal": "-",
+            "Price": "-",
+            "RSI": "-",
+            "Buy/Sell Power": "-",
+            "Stoch K/D": "-"
+        })
+
+mem_df = pd.DataFrame(fixed_rows)
+st.dataframe(mem_df, use_container_width=True, height=250)
 
 # ---------------------------------------------------------
-# 5. LIVE PROFESSIONAL CANDLESTICK & INDICATOR CHART (IST TIMEZONE FIX)
+# 5. LIVE PROFESSIONAL CANDLESTICK & INDICATORS (COMPACT SIZE)
 # ---------------------------------------------------------
 st.markdown("---")
 st.subheader("🖥️ Live Professional Candlestick & Indicator Chart")
@@ -222,19 +243,19 @@ try:
     if not c_data.empty and len(c_data) >= 10:
         df_chart = calculate_indicators(c_data.copy()).tail(50)
 
-        # UTC থেকে ভারতীয় সময় (IST - Asia/Kolkata) কনভার্সন
+        # UTC to IST Timezone Conversion
         df_chart.index = pd.to_datetime(df_chart.index)
         if df_chart.index.tz is None:
             df_chart.index = df_chart.index.tz_localize('UTC').tz_convert('Asia/Kolkata')
         else:
             df_chart.index = df_chart.index.tz_convert('Asia/Kolkata')
 
-        # Create Subplots for Price, RSI, and Stoch RSI
+        # Create Compact Subplots
         fig = make_subplots(
             rows=3, cols=1, 
             shared_xaxes=True, 
-            vertical_spacing=0.04,
-            row_heights=[0.5, 0.25, 0.25],
+            vertical_spacing=0.03,
+            row_heights=[0.55, 0.225, 0.225],
             subplot_titles=(f"{selected_asset} Price Movement", "RSI (14)", "Stochastic RSI")
         )
 
@@ -255,7 +276,7 @@ try:
 
         # 2. RSI Line
         fig.add_trace(
-            go.Scatter(x=df_chart.index, y=df_chart['RSI'], name="RSI", line=dict(color='#ab47bc', width=2)),
+            go.Scatter(x=df_chart.index, y=df_chart['RSI'], name="RSI", line=dict(color='#ab47bc', width=1.5)),
             row=2, col=1
         )
         fig.add_hline(y=70, line_dash="dash", line_color="red", row=2, col=1)
@@ -263,21 +284,22 @@ try:
 
         # 3. Stochastic RSI (%K & %D)
         fig.add_trace(
-            go.Scatter(x=df_chart.index, y=df_chart['Stoch_K'], name="Stoch %K", line=dict(color='#2196f3', width=1.5)),
+            go.Scatter(x=df_chart.index, y=df_chart['Stoch_K'], name="Stoch %K", line=dict(color='#2196f3', width=1.2)),
             row=3, col=1
         )
         fig.add_trace(
-            go.Scatter(x=df_chart.index, y=df_chart['Stoch_D'], name="Stoch %D", line=dict(color='#ff9800', width=1.5)),
+            go.Scatter(x=df_chart.index, y=df_chart['Stoch_D'], name="Stoch %D", line=dict(color='#ff9800', width=1.2)),
             row=3, col=1
         )
         fig.add_hline(y=80, line_dash="dash", line_color="red", row=3, col=1)
         fig.add_hline(y=20, line_dash="dash", line_color="green", row=3, col=1)
 
+        # Layout Settings (450px Height Fix)
         fig.update_layout(
             template="plotly_dark",
             xaxis_rangeslider_visible=False,
-            height=650,
-            margin=dict(l=10, r=10, t=30, b=10),
+            height=450,
+            margin=dict(l=5, r=5, t=25, b=5),
             showlegend=False,
             hovermode="x unified"
         )
