@@ -109,8 +109,13 @@ def calculate_indicators(df):
     return df
 
 @st.cache_data(ttl=5)
-def fetch_data_safe(symbol, tf):
-    return yf.download(symbol, period="5d", interval=tf, progress=False)
+def fetch_data_safe(symbol, tf, m_type):
+    # NSE এবং MCX-এর জন্য শুধুমাত্র আজকের ফ্রেশ ইন্ট্রাডে ডেটা (1d) নেবে যাতে গ্যাপ না থাকে
+    if m_type == "Crypto (24/7)":
+        fetch_p = "5d"
+    else:
+        fetch_p = "1d"
+    return yf.download(symbol, period=fetch_p, interval=tf, progress=False)
 
 # ---------------------------------------------------------
 # 3. LIVE DATA FETCHING ENGINE (TOP SECTION)
@@ -121,8 +126,8 @@ scanned_results = []
 
 for name, symbol in tickers.items():
     try:
-        data = fetch_data_safe(symbol, timeframe)
-        if data.empty or len(data) < 10:
+        data = fetch_data_safe(symbol, timeframe, market_type)
+        if data.empty or len(data) < 5:
             continue
         
         if isinstance(data.columns, pd.MultiIndex):
@@ -196,15 +201,15 @@ for name, symbol in tickers.items():
     except Exception:
         continue
 
-# Render Compact Live Results Table (Height 180px for 4 assets)
+# Render Compact Live Results Table (Height 160px)
 if scanned_results:
     res_df = pd.DataFrame(scanned_results)
-    st.dataframe(res_df, use_container_width=True, height=180)
+    st.dataframe(res_df, use_container_width=True, height=160)
 else:
     st.warning("Fetching live market data... Please wait a moment.")
 
 # ---------------------------------------------------------
-# 4. LIVE PROFESSIONAL CANDLESTICK & INDICATORS (MIDDLE SECTION - COMPACT)
+# 4. LIVE PROFESSIONAL CANDLESTICK & INDICATORS (MIDDLE SECTION - ULTRA COMPACT)
 # ---------------------------------------------------------
 st.markdown("---")
 st.subheader("🖥️ Live Professional Candlestick & Indicator Chart")
@@ -213,13 +218,13 @@ selected_asset = st.selectbox("Select Asset for Live Visual Chart:", list(ticker
 asset_symbol = tickers[selected_asset]
 
 try:
-    c_data = fetch_data_safe(asset_symbol, timeframe)
+    c_data = fetch_data_safe(asset_symbol, timeframe, market_type)
     
     if isinstance(c_data.columns, pd.MultiIndex):
         c_data.columns = c_data.columns.get_level_values(0)
 
-    if not c_data.empty and len(c_data) >= 10:
-        df_chart = calculate_indicators(c_data.copy()).tail(50)
+    if not c_data.empty and len(c_data) >= 5:
+        df_chart = calculate_indicators(c_data.copy()).tail(40)
 
         # UTC to IST Timezone Conversion
         df_chart.index = pd.to_datetime(df_chart.index)
@@ -228,13 +233,13 @@ try:
         else:
             df_chart.index = df_chart.index.tz_convert('Asia/Kolkata')
 
-        # Create Compact 4 Subplots
+        # Create Ultra Compact 4 Subplots
         fig = make_subplots(
             rows=4, cols=1, 
             shared_xaxes=True, 
             vertical_spacing=0.02,
-            row_heights=[0.40, 0.20, 0.20, 0.20],
-            subplot_titles=(f"{selected_asset} Price", "RSI (14)", "Stoch RSI", "AO")
+            row_heights=[0.38, 0.21, 0.21, 0.20],
+            subplot_titles=(f"{selected_asset} Price", "RSI", "Stoch RSI", "AO")
         )
 
         # 1. Candlestick Chart
@@ -254,7 +259,7 @@ try:
 
         # 2. RSI Line
         fig.add_trace(
-            go.Scatter(x=df_chart.index, y=df_chart['RSI'], name="RSI", line=dict(color='#ab47bc', width=1.2)),
+            go.Scatter(x=df_chart.index, y=df_chart['RSI'], name="RSI", line=dict(color='#ab47bc', width=1.0)),
             row=2, col=1
         )
         fig.add_hline(y=70, line_dash="dash", line_color="red", row=2, col=1)
@@ -262,11 +267,11 @@ try:
 
         # 3. Stochastic RSI (%K & %D)
         fig.add_trace(
-            go.Scatter(x=df_chart.index, y=df_chart['Stoch_K'], name="Stoch %K", line=dict(color='#2196f3', width=1.0)),
+            go.Scatter(x=df_chart.index, y=df_chart['Stoch_K'], name="Stoch %K", line=dict(color='#2196f3', width=0.9)),
             row=3, col=1
         )
         fig.add_trace(
-            go.Scatter(x=df_chart.index, y=df_chart['Stoch_D'], name="Stoch %D", line=dict(color='#ff9800', width=1.0)),
+            go.Scatter(x=df_chart.index, y=df_chart['Stoch_D'], name="Stoch %D", line=dict(color='#ff9800', width=0.9)),
             row=3, col=1
         )
         fig.add_hline(y=80, line_dash="dash", line_color="red", row=3, col=1)
@@ -294,12 +299,12 @@ try:
         )
         fig.add_hline(y=0, line_dash="solid", line_color="gray", row=4, col=1)
 
-        # Compact Layout Settings (Height 320px for single-screen view)
+        # Ultra Compact Layout Settings (Height 260px for single-screen view)
         fig.update_layout(
             template="plotly_dark",
             xaxis_rangeslider_visible=False,
-            height=320,
-            margin=dict(l=2, r=2, t=15, b=2),
+            height=260,
+            margin=dict(l=2, r=2, t=10, b=2),
             showlegend=False,
             hovermode="x unified"
         )
@@ -342,4 +347,4 @@ for i in range(15):
         })
 
 mem_df = pd.DataFrame(fixed_rows)
-st.dataframe(mem_df, use_container_width=True, height=200)
+st.dataframe(mem_df, use_container_width=True, height=180)
