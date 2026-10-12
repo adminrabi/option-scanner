@@ -81,17 +81,15 @@ if "signal_memory" not in st.session_state:
     st.session_state.signal_memory = []
 
 # ---------------------------------------------------------
-# 2. INDICATOR CALCULATIONS (RSI, STOCH RSI & AWESOME OSCILLATOR)
+# 2. INDICATOR CALCULATIONS (RSI, STOCH RSI & AO)
 # ---------------------------------------------------------
 def calculate_indicators(df):
-    # RSI
     delta = df['Close'].diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
     rs = gain / (loss + 1e-10)
     df['RSI'] = 100 - (100 / (1 + rs))
 
-    # Stochastic RSI
     rsi = df['RSI']
     rsi_min = rsi.rolling(window=14).min()
     rsi_max = rsi.rolling(window=14).max()
@@ -99,13 +97,11 @@ def calculate_indicators(df):
     df['Stoch_K'] = stoch_rsi.rolling(window=3).mean() * 100
     df['Stoch_D'] = df['Stoch_K'].rolling(window=3).mean()
 
-    # Buying & Selling Power
     candle_range = df['High'] - df['Low']
     candle_range = candle_range.replace(0, 1e-10)
     df['Buying_Power'] = ((df['Close'] - df['Low']) / candle_range) * 100
     df['Selling_Power'] = ((df['High'] - df['Close']) / candle_range) * 100
 
-    # Awesome Oscillator (AO) Calculation
     median_price = (df['High'] + df['Low']) / 2
     ao = median_price.rolling(window=5).mean() - median_price.rolling(window=34).mean()
     df['AO'] = ao
@@ -118,7 +114,7 @@ def fetch_data_safe(symbol, tf):
     return yf.download(symbol, period=fetch_p, interval=tf, progress=False)
 
 # ---------------------------------------------------------
-# 3. LIVE DATA FETCHING ENGINE
+# 3. LIVE DATA FETCHING ENGINE (TOP SECTION)
 # ---------------------------------------------------------
 st.subheader(f"📊 Live Scan Dashboard - [{market_type}] ({timeframe})")
 
@@ -201,7 +197,7 @@ for name, symbol in tickers.items():
     except Exception:
         continue
 
-# Render Results
+# Render Live Results Table
 if scanned_results:
     res_df = pd.DataFrame(scanned_results)
     st.dataframe(res_df, use_container_width=True)
@@ -209,7 +205,7 @@ else:
     st.warning("Fetching live market data... Please wait a moment.")
 
 # ---------------------------------------------------------
-# 4. SIGNAL MEMORY TABLE (FIXED 15 SLOTS - NO SHAKING)
+# 4. SIGNAL MEMORY TABLE (MIDDLE SECTION - FIXED 15 SLOTS)
 # ---------------------------------------------------------
 st.markdown("---")
 st.subheader("📜 Confirmed Signal Memory Log (Saved History - Last 15)")
@@ -237,7 +233,7 @@ mem_df = pd.DataFrame(fixed_rows)
 st.dataframe(mem_df, use_container_width=True, height=250)
 
 # ---------------------------------------------------------
-# 5. LIVE PROFESSIONAL CANDLESTICK & INDICATORS WITH AO (COMPACT)
+# 5. LIVE PROFESSIONAL CANDLESTICK & INDICATORS (BOTTOM SECTION)
 # ---------------------------------------------------------
 st.markdown("---")
 st.subheader("🖥️ Live Professional Candlestick & Indicator Chart")
@@ -305,16 +301,16 @@ try:
         fig.add_hline(y=80, line_dash="dash", line_color="red", row=3, col=1)
         fig.add_hline(y=20, line_dash="dash", line_color="green", row=3, col=1)
 
-        # 4. Awesome Oscillator (Bar Chart Histogram with Green/Red Color)
+        # 4. Awesome Oscillator (AO)
         ao_colors = []
         for i in range(len(df_chart)):
             if i == 0:
                 ao_colors.append('#089981')
             else:
                 if df_chart['AO'].iloc[i] >= df_chart['AO'].iloc[i-1]:
-                    ao_colors.append('#089981') # Green
+                    ao_colors.append('#089981')
                 else:
-                    ao_colors.append('#f23645') # Red
+                    ao_colors.append('#f23645')
 
         fig.add_trace(
             go.Bar(
@@ -345,6 +341,6 @@ try:
 
         st.plotly_chart(fig, use_container_width=True)
     else:
-        st.info("Fetching market data for chart...")
+        st.warning("⚠️ Market is closed or insufficient intraday data available for this timeframe. Please check during live market hours.")
 except Exception as e:
     st.error(f"Error loading interactive chart: {e}")
