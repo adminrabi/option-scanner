@@ -110,7 +110,8 @@ def calculate_indicators(df):
 
 @st.cache_data(ttl=5)
 def fetch_data_safe(symbol, tf):
-    fetch_p = "1d" if tf in ["1m", "3m"] else "5d"
+    # স্টক ও কমোডিটির ক্ষেত্রে শুধুমাত্র আজকের দিনের ফ্রেশ ইন্ট্রাডে ডেটা (1d) টানবে, যাতে ছুটির দিনের ডেটা জ্যাম না পাকায়
+    fetch_p = "1d" if tf in ["1m", "3m", "5m"] else "5d"
     return yf.download(symbol, period=fetch_p, interval=tf, progress=False)
 
 # ---------------------------------------------------------
@@ -123,7 +124,7 @@ scanned_results = []
 for name, symbol in tickers.items():
     try:
         data = fetch_data_safe(symbol, timeframe)
-        if data.empty or len(data) < 35:
+        if data.empty or len(data) < 10:
             continue
         
         if isinstance(data.columns, pd.MultiIndex):
@@ -205,35 +206,7 @@ else:
     st.warning("Fetching live market data... Please wait a moment.")
 
 # ---------------------------------------------------------
-# 4. SIGNAL MEMORY TABLE (MIDDLE SECTION - FIXED 15 SLOTS)
-# ---------------------------------------------------------
-st.markdown("---")
-st.subheader("📜 Confirmed Signal Memory Log (Saved History - Last 15)")
-
-mem_list = st.session_state.signal_memory[::-1]
-fixed_rows = []
-
-for i in range(15):
-    if i < len(mem_list):
-        fixed_rows.append(mem_list[i])
-    else:
-        fixed_rows.append({
-            "Time (IST)": "-",
-            "Market": "-",
-            "Asset": "-",
-            "Signal": "-",
-            "Price": "-",
-            "RSI": "-",
-            "AO": "-",
-            "Buy/Sell Power": "-",
-            "Stoch K/D": "-"
-        })
-
-mem_df = pd.DataFrame(fixed_rows)
-st.dataframe(mem_df, use_container_width=True, height=250)
-
-# ---------------------------------------------------------
-# 5. LIVE PROFESSIONAL CANDLESTICK & INDICATORS (BOTTOM SECTION)
+# 4. LIVE PROFESSIONAL CANDLESTICK & INDICATORS (MIDDLE SECTION)
 # ---------------------------------------------------------
 st.markdown("---")
 st.subheader("🖥️ Live Professional Candlestick & Indicator Chart")
@@ -247,7 +220,7 @@ try:
     if isinstance(c_data.columns, pd.MultiIndex):
         c_data.columns = c_data.columns.get_level_values(0)
 
-    if not c_data.empty and len(c_data) >= 35:
+    if not c_data.empty and len(c_data) >= 10:
         df_chart = calculate_indicators(c_data.copy()).tail(50)
 
         # UTC to IST Timezone Conversion
@@ -327,7 +300,7 @@ try:
         fig.update_layout(
             template="plotly_dark",
             xaxis_rangeslider_visible=False,
-            height=550,
+            height=520,
             margin=dict(l=5, r=5, t=25, b=5),
             showlegend=False,
             hovermode="x unified"
@@ -344,3 +317,31 @@ try:
         st.warning("⚠️ Market is closed or insufficient intraday data available for this timeframe. Please check during live market hours.")
 except Exception as e:
     st.error(f"Error loading interactive chart: {e}")
+
+# ---------------------------------------------------------
+# 5. SIGNAL MEMORY TABLE (BOTTOM SECTION - FIXED 15 SLOTS)
+# ---------------------------------------------------------
+st.markdown("---")
+st.subheader("📜 Confirmed Signal Memory Log (Saved History - Last 15)")
+
+mem_list = st.session_state.signal_memory[::-1]
+fixed_rows = []
+
+for i in range(15):
+    if i < len(mem_list):
+        fixed_rows.append(mem_list[i])
+    else:
+        fixed_rows.append({
+            "Time (IST)": "-",
+            "Market": "-",
+            "Asset": "-",
+            "Signal": "-",
+            "Price": "-",
+            "RSI": "-",
+            "AO": "-",
+            "Buy/Sell Power": "-",
+            "Stoch K/D": "-"
+        })
+
+mem_df = pd.DataFrame(fixed_rows)
+st.dataframe(mem_df, use_container_width=True, height=250)
