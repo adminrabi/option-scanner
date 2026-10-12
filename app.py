@@ -7,7 +7,7 @@ import datetime as dt
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-# Streamlit Page Config
+# Streamlit Page Config (Wide Layout)
 st.set_page_config(page_title="Pro Scalping Scanner v3.0", layout="wide")
 
 # Safe Auto-Refresh Import
@@ -110,8 +110,7 @@ def calculate_indicators(df):
 
 @st.cache_data(ttl=5)
 def fetch_data_safe(symbol, tf):
-    fetch_p = "1d" if tf in ["1m", "3m"] else "5d"
-    return yf.download(symbol, period=fetch_p, interval=tf, progress=False)
+    return yf.download(symbol, period="5d", interval=tf, progress=False)
 
 # ---------------------------------------------------------
 # 3. LIVE DATA FETCHING ENGINE (TOP SECTION)
@@ -154,18 +153,18 @@ for name, symbol in tickers.items():
 
         signal_type = "NEUTRAL"
         if is_call:
-            signal_type = "🚀 CONFIRMED CALL (CE)"
+            signal_type = "🚀 CALL (CE)"
         elif is_put:
-            signal_type = "🔻 CONFIRMED PUT (PE)"
+            signal_type = "🔻 PUT (PE)"
 
         scanned_results.append({
             "Asset": name,
             "Price": price,
             "RSI": rsi,
             "Stoch %K/%D": f"{stoch_k} / {stoch_d}",
-            "AO Value": ao_val,
-            "Buy Power %": f"{buy_pwr}%",
-            "Sell Power %": f"{sell_pwr}%",
+            "AO": ao_val,
+            "Buy%": f"{buy_pwr}%",
+            "Sell%": f"{sell_pwr}%",
             "Signal": signal_type
         })
 
@@ -197,15 +196,15 @@ for name, symbol in tickers.items():
     except Exception:
         continue
 
-# Render Live Results Table
+# Render Compact Live Results Table (Height 180px for 4 assets)
 if scanned_results:
     res_df = pd.DataFrame(scanned_results)
-    st.dataframe(res_df, use_container_width=True)
+    st.dataframe(res_df, use_container_width=True, height=180)
 else:
     st.warning("Fetching live market data... Please wait a moment.")
 
 # ---------------------------------------------------------
-# 4. LIVE PROFESSIONAL CANDLESTICK & INDICATORS (MIDDLE SECTION)
+# 4. LIVE PROFESSIONAL CANDLESTICK & INDICATORS (MIDDLE SECTION - COMPACT)
 # ---------------------------------------------------------
 st.markdown("---")
 st.subheader("🖥️ Live Professional Candlestick & Indicator Chart")
@@ -229,13 +228,13 @@ try:
         else:
             df_chart.index = df_chart.index.tz_convert('Asia/Kolkata')
 
-        # Create 4 Subplots (Price, RSI, Stoch RSI, Awesome Oscillator)
+        # Create Compact 4 Subplots
         fig = make_subplots(
             rows=4, cols=1, 
             shared_xaxes=True, 
-            vertical_spacing=0.03,
-            row_heights=[0.45, 0.18, 0.18, 0.19],
-            subplot_titles=(f"{selected_asset} Price Movement", "RSI (14)", "Stochastic RSI", "Awesome Oscillator (AO)")
+            vertical_spacing=0.02,
+            row_heights=[0.40, 0.20, 0.20, 0.20],
+            subplot_titles=(f"{selected_asset} Price", "RSI (14)", "Stoch RSI", "AO")
         )
 
         # 1. Candlestick Chart
@@ -255,7 +254,7 @@ try:
 
         # 2. RSI Line
         fig.add_trace(
-            go.Scatter(x=df_chart.index, y=df_chart['RSI'], name="RSI", line=dict(color='#ab47bc', width=1.5)),
+            go.Scatter(x=df_chart.index, y=df_chart['RSI'], name="RSI", line=dict(color='#ab47bc', width=1.2)),
             row=2, col=1
         )
         fig.add_hline(y=70, line_dash="dash", line_color="red", row=2, col=1)
@@ -263,11 +262,11 @@ try:
 
         # 3. Stochastic RSI (%K & %D)
         fig.add_trace(
-            go.Scatter(x=df_chart.index, y=df_chart['Stoch_K'], name="Stoch %K", line=dict(color='#2196f3', width=1.2)),
+            go.Scatter(x=df_chart.index, y=df_chart['Stoch_K'], name="Stoch %K", line=dict(color='#2196f3', width=1.0)),
             row=3, col=1
         )
         fig.add_trace(
-            go.Scatter(x=df_chart.index, y=df_chart['Stoch_D'], name="Stoch %D", line=dict(color='#ff9800', width=1.2)),
+            go.Scatter(x=df_chart.index, y=df_chart['Stoch_D'], name="Stoch %D", line=dict(color='#ff9800', width=1.0)),
             row=3, col=1
         )
         fig.add_hline(y=80, line_dash="dash", line_color="red", row=3, col=1)
@@ -295,12 +294,12 @@ try:
         )
         fig.add_hline(y=0, line_dash="solid", line_color="gray", row=4, col=1)
 
-        # Layout Settings
+        # Compact Layout Settings (Height 320px for single-screen view)
         fig.update_layout(
             template="plotly_dark",
             xaxis_rangeslider_visible=False,
-            height=520,
-            margin=dict(l=5, r=5, t=25, b=5),
+            height=320,
+            margin=dict(l=2, r=2, t=15, b=2),
             showlegend=False,
             hovermode="x unified"
         )
@@ -313,7 +312,7 @@ try:
 
         st.plotly_chart(fig, use_container_width=True)
     else:
-        st.warning("⚠️ Market is closed or insufficient intraday data available for this timeframe. Please check during live market hours.")
+        st.warning("⚠️ Market is closed or insufficient intraday data available.")
 except Exception as e:
     st.error(f"Error loading interactive chart: {e}")
 
@@ -343,4 +342,4 @@ for i in range(15):
         })
 
 mem_df = pd.DataFrame(fixed_rows)
-st.dataframe(mem_df, use_container_width=True, height=250)
+st.dataframe(mem_df, use_container_width=True, height=200)
