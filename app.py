@@ -110,8 +110,7 @@ def calculate_indicators(df):
 
 @st.cache_data(ttl=5)
 def fetch_data_safe(symbol, tf):
-    # স্টক ও কমোডিটির ক্ষেত্রে শুধুমাত্র আজকের দিনের ফ্রেশ ইন্ট্রাডে ডেটা (1d) টানবে, যাতে ছুটির দিনের ডেটা জ্যাম না পাকায়
-    fetch_p = "1d" if tf in ["1m", "3m", "5m"] else "5d"
+    fetch_p = "1d" if tf in ["1m", "3m"] else "5d"
     return yf.download(symbol, period=fetch_p, interval=tf, progress=False)
 
 # ---------------------------------------------------------
