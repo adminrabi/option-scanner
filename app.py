@@ -95,7 +95,7 @@ if "signal_memory" not in st.session_state:
     st.session_state.signal_memory = []
 
 # ---------------------------------------------------------
-# 2. INDICATOR CALCULATIONS (ROBUST & DYNAMIC)
+# 2. INDICATOR & WRITING BIAS CALCULATIONS
 # ---------------------------------------------------------
 def calculate_indicators(df):
     delta = df['Close'].diff()
@@ -119,6 +119,17 @@ def calculate_indicators(df):
     median_price = (df['High'] + df['Low']) / 2
     ao = median_price.rolling(window=5, min_periods=1).mean() - median_price.rolling(window=34, min_periods=1).mean()
     df['AO'] = ao
+
+    # Option Writing Sentiment Bias Calculation based on Price Action & Power
+    df['Writing_Bias'] = np.where(
+        (df['Buying_Power'] > df['Selling_Power']) & (df['RSI'] > 50),
+        "🟢 PUT WRITING (Bullish)",
+        np.where(
+            (df['Selling_Power'] > df['Buying_Power']) & (df['RSI'] < 50),
+            "🔴 CALL WRITING (Bearish)",
+            "⚖️ NEUTRAL / CHOPPY"
+        )
+    )
 
     return df
 
@@ -155,6 +166,7 @@ for name, symbol in tickers.items():
         buy_pwr = round(float(curr['Buying_Power']), 1)
         sell_pwr = round(float(curr['Selling_Power']), 1)
         ao_val = round(float(curr['AO']), 2)
+        writing_bias = curr['Writing_Bias']
 
         is_green = curr['Close'] > curr['Open']
         is_red = curr['Close'] < curr['Open']
@@ -177,8 +189,7 @@ for name, symbol in tickers.items():
             "RSI": rsi,
             "Stoch %K/%D": f"{stoch_k} / {stoch_d}",
             "AO": ao_val,
-            "Buy%": f"{buy_pwr}%",
-            "Sell%": f"{sell_pwr}%",
+            "Writing Bias": writing_bias,
             "Signal": signal_type
         })
 
@@ -199,8 +210,7 @@ for name, symbol in tickers.items():
                     "Signal": signal_type,
                     "Price": price,
                     "RSI": rsi,
-                    "AO": ao_val,
-                    "Buy/Sell Power": f"B: {buy_pwr}% | S: {sell_pwr}%",
+                    "Writing Bias": writing_bias,
                     "Stoch K/D": f"{stoch_k}/{stoch_d}"
                 })
                 
@@ -246,7 +256,7 @@ try:
         else:
             df_chart.index = df_chart.index.tz_convert('Asia/Kolkata')
 
-        # Create Expanded 4 Subplots for Better Clarity
+        # Create Expanded 4 Subplots for Better Clarity (Height 400px)
         fig = make_subplots(
             rows=4, cols=1, 
             shared_xaxes=True, 
@@ -312,11 +322,11 @@ try:
         )
         fig.add_hline(y=0, line_dash="solid", line_color="gray", row=4, col=1)
 
-        # Expanded Chart Layout (Height 360px for crystal clear visibility)
+        # Expanded Chart Layout (Height 400px for clear visibility)
         fig.update_layout(
             template="plotly_dark",
             xaxis_rangeslider_visible=False,
-            height=360,
+            height=400,
             margin=dict(l=5, r=5, t=20, b=5),
             showlegend=False,
             hovermode="x unified",
@@ -355,8 +365,7 @@ for i in range(15):
             "Signal": "-",
             "Price": "-",
             "RSI": "-",
-            "AO": "-",
-            "Buy/Sell Power": "-",
+            "Writing Bias": "-",
             "Stoch K/D": "-"
         })
 
