@@ -10,18 +10,18 @@ from plotly.subplots import make_subplots
 # Streamlit Page Config (Wide Layout)
 st.set_page_config(page_title="Pro Scalping Scanner v3.0", layout="wide")
 
-# Custom CSS for Compact UI (Reducing extra padding & box sizes)
+# Custom CSS for Compact UI
 st.markdown("""
     <style>
         .block-container {
-            padding-top: 1rem;
-            padding-bottom: 1rem;
-            padding-left: 1.5rem;
-            padding-right: 1.5rem;
+            padding-top: 0.8rem;
+            padding-bottom: 0.8rem;
+            padding-left: 1rem;
+            padding-right: 1rem;
         }
-        h1 { font-size: 1.5rem !important; margin-bottom: 0rem; }
-        h3 { font-size: 1.1rem !important; margin-top: 0.2rem; margin-bottom: 0.2rem; }
-        hr { margin-top: 0.5rem; margin-bottom: 0.5rem; }
+        h1 { font-size: 1.4rem !important; margin-bottom: 0rem; }
+        h3 { font-size: 1.0rem !important; margin-top: 0.1rem; margin-bottom: 0.1rem; }
+        hr { margin-top: 0.3rem; margin-bottom: 0.3rem; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -95,37 +95,37 @@ if "signal_memory" not in st.session_state:
     st.session_state.signal_memory = []
 
 # ---------------------------------------------------------
-# 2. INDICATOR CALCULATIONS (SAFE & CLEAN)
+# 2. INDICATOR CALCULATIONS (ROBUST & ACCURATE)
 # ---------------------------------------------------------
 def calculate_indicators(df):
     delta = df['Close'].diff()
-    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+    gain = (delta.where(delta > 0, 0.0)).rolling(window=14, min_periods=1).mean()
+    loss = (-delta.where(delta < 0, 0.0)).rolling(window=14, min_periods=1).mean()
     rs = gain / (loss + 1e-10)
     df['RSI'] = 100 - (100 / (1 + rs))
 
     rsi = df['RSI']
-    rsi_min = rsi.rolling(window=14).min()
-    rsi_max = rsi.rolling(window=14).max()
+    rsi_min = rsi.rolling(window=14, min_periods=1).min()
+    rsi_max = rsi.rolling(window=14, min_periods=1).max()
     stoch_rsi = (rsi - rsi_min) / (rsi_max - rsi_min + 1e-10)
-    df['Stoch_K'] = (stoch_rsi.rolling(window=3).mean() * 100).fillna(50)
-    df['Stoch_D'] = df['Stoch_K'].rolling(window=3).mean().fillna(50)
+    df['Stoch_K'] = stoch_rsi.rolling(window=3, min_periods=1).mean() * 100
+    df['Stoch_D'] = df['Stoch_K'].rolling(window=3, min_periods=1).mean()
 
     candle_range = df['High'] - df['Low']
     candle_range = candle_range.replace(0, 1e-10)
-    df['Buying_Power'] = (((df['Close'] - df['Low']) / candle_range) * 100).fillna(50)
-    df['Selling_Power'] = (((df['High'] - df['Close']) / candle_range) * 100).fillna(50)
+    df['Buying_Power'] = ((df['Close'] - df['Low']) / candle_range) * 100
+    df['Selling_Power'] = ((df['High'] - df['Close']) / candle_range) * 100
 
     median_price = (df['High'] + df['Low']) / 2
-    ao = median_price.rolling(window=5).mean() - median_price.rolling(window=34).mean()
-    df['AO'] = ao.fillna(0)
+    ao = median_price.rolling(window=5, min_periods=1).mean() - median_price.rolling(window=34, min_periods=1).mean()
+    df['AO'] = ao
 
     return df
 
 @st.cache_data(ttl=5)
-def fetch_data_safe(symbol, tf, m_type):
-    fetch_p = "5d" if m_type == "Crypto (24/7)" else "1d"
-    return yf.download(symbol, period=fetch_p, interval=tf, progress=False)
+def fetch_data_safe(symbol, tf):
+    # সব মার্কেটের জন্য ৫ দিনের (5d) ডেটা ফেচ করা হলো যাতে পর্যাপ্ত হিস্ট্রি থাকে
+    return yf.download(symbol, period="5d", interval=tf, progress=False)
 
 # ---------------------------------------------------------
 # 3. LIVE DATA FETCHING ENGINE (TOP SECTION)
@@ -136,7 +136,7 @@ scanned_results = []
 
 for name, symbol in tickers.items():
     try:
-        data = fetch_data_safe(symbol, timeframe, market_type)
+        data = fetch_data_safe(symbol, timeframe)
         if data.empty or len(data) < 5:
             continue
         
@@ -210,10 +210,10 @@ for name, symbol in tickers.items():
     except Exception:
         continue
 
-# Render Compact Live Results Table (Height 150px)
+# Render Compact Live Results Table (Height 140px)
 if scanned_results:
     res_df = pd.DataFrame(scanned_results)
-    st.dataframe(res_df, use_container_width=True, height=150)
+    st.dataframe(res_df, use_container_width=True, height=140)
 else:
     st.warning("Fetching live market data... Please wait a moment.")
 
@@ -230,13 +230,13 @@ with col2:
 asset_symbol = tickers[selected_asset]
 
 try:
-    c_data = fetch_data_safe(asset_symbol, timeframe, market_type)
+    c_data = fetch_data_safe(asset_symbol, timeframe)
     
     if isinstance(c_data.columns, pd.MultiIndex):
         c_data.columns = c_data.columns.get_level_values(0)
 
     if not c_data.empty and len(c_data) >= 5:
-        df_chart = calculate_indicators(c_data.copy()).tail(40)
+        df_chart = calculate_indicators(c_data.copy()).tail(50)
 
         # UTC to IST Timezone Conversion
         df_chart.index = pd.to_datetime(df_chart.index)
@@ -311,11 +311,11 @@ try:
         )
         fig.add_hline(y=0, line_dash="solid", line_color="gray", row=4, col=1)
 
-        # Compact Layout Settings (Height 230px for perfect single-screen view)
+        # Compact Layout Settings (Height 220px for single-screen fit)
         fig.update_layout(
             template="plotly_dark",
             xaxis_rangeslider_visible=False,
-            height=230,
+            height=220,
             margin=dict(l=2, r=2, t=10, b=2),
             showlegend=False,
             hovermode="x unified"
@@ -323,13 +323,13 @@ try:
 
         fig.update_xaxes(
             type='date',
-            tickformat="%I:%M %p",
+            tickformat="%b %d, %I:%M %p",
             row=4, col=1
         )
 
         st.plotly_chart(fig, use_container_width=True)
     else:
-        st.warning("⚠️ Market is closed or insufficient intraday data available.")
+        st.warning("⚠️ Insufficient historical data available for this asset/timeframe.")
 except Exception as e:
     st.error(f"Error loading chart: {e}")
 
@@ -359,4 +359,4 @@ for i in range(15):
         })
 
 mem_df = pd.DataFrame(fixed_rows)
-st.dataframe(mem_df, use_container_width=True, height=150)
+st.dataframe(mem_df, use_container_width=True, height=140)
