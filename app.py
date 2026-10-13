@@ -10,19 +10,19 @@ from plotly.subplots import make_subplots
 # Streamlit Page Config (Wide Layout)
 st.set_page_config(page_title="Pro Scalping Scanner v3.0", layout="wide")
 
-# Custom CSS for Professional Compact Terminal Look
+# Custom CSS for Strict Compact UI & Overlap Prevention
 st.markdown("""
     <style>
         .block-container {
-            padding-top: 0.5rem;
-            padding-bottom: 0.5rem;
-            padding-left: 0.8rem;
-            padding-right: 0.8rem;
+            padding-top: 0.4rem;
+            padding-bottom: 0.4rem;
+            padding-left: 0.6rem;
+            padding-right: 0.6rem;
         }
-        h1 { font-size: 1.2rem !important; margin-bottom: 0rem; color: #00ffcc; }
-        h3 { font-size: 0.95rem !important; margin-top: 0.1rem; margin-bottom: 0.1rem; }
+        h1 { font-size: 1.1rem !important; margin-bottom: 0rem; color: #00ffcc; }
+        h3 { font-size: 0.85rem !important; margin-top: 0rem; margin-bottom: 0rem; }
         hr { margin-top: 0.2rem; margin-bottom: 0.2rem; }
-        .element-container { margin-bottom: 0.5rem; }
+        .stSelectbox label { font-size: 0.8rem !important; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -211,22 +211,24 @@ for name, symbol in tickers.items():
     except Exception:
         continue
 
-# Render Compact Live Results Table (Height 130px)
+# Render Compact Live Results Table (Height 120px)
 if scanned_results:
     res_df = pd.DataFrame(scanned_results)
-    st.dataframe(res_df, use_container_width=True, height=130)
+    st.dataframe(res_df, use_container_width=True, height=120)
 else:
     st.warning("Fetching live market data...")
 
 # ---------------------------------------------------------
-# 4. LIVE PROFESSIONAL CANDLESTICK & INDICATORS (COMPACT)
+# 4. LIVE PROFESSIONAL CANDLESTICK & INDICATORS (FIXED OVERLAP)
 # ---------------------------------------------------------
 st.markdown("---")
-col1, col2 = st.columns([1, 4])
-with col1:
-    st.subheader("🖥️ Live Chart")
-with col2:
-    selected_asset = st.selectbox("", list(tickers.keys()), label_visibility="collapsed")
+
+# Clean separated layout for title and selector to avoid any text overlapping
+c_head1, c_head2 = st.columns([2, 2])
+with c_head1:
+    st.subheader("🖥️ Live Visual Chart")
+with c_head2:
+    selected_asset = st.selectbox("Select Asset:", list(tickers.keys()), label_visibility="collapsed")
 
 asset_symbol = tickers[selected_asset]
 
@@ -252,7 +254,7 @@ try:
             shared_xaxes=True, 
             vertical_spacing=0.01,
             row_heights=[0.38, 0.21, 0.21, 0.20],
-            subplot_titles=(f"{selected_asset}", "RSI", "Stoch", "AO")
+            subplot_titles=(f"{selected_asset} Price", "RSI", "Stoch", "AO")
         )
 
         # 1. Candlestick Chart
@@ -312,15 +314,15 @@ try:
         )
         fig.add_hline(y=0, line_dash="solid", line_color="gray", row=4, col=1)
 
-        # Compact Layout Settings (Height 210px for crisp single-screen fit)
+        # Compact Layout Settings (Height 200px for single-screen view)
         fig.update_layout(
             template="plotly_dark",
             xaxis_rangeslider_visible=False,
-            height=210,
-            margin=dict(l=2, r=2, t=8, b=2),
+            height=200,
+            margin=dict(l=2, r=2, t=6, b=2),
             showlegend=False,
             hovermode="x unified",
-            font=dict(size=9)
+            font=dict(size=8)
         )
 
         fig.update_xaxes(
@@ -361,4 +363,4 @@ for i in range(15):
         })
 
 mem_df = pd.DataFrame(fixed_rows)
-st.dataframe(mem_df, use_container_width=True, height=130)
+st.dataframe(mem_df, use_container_width=True, height=120)
