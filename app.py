@@ -123,9 +123,13 @@ def calculate_indicators(df):
     return df
 
 @st.cache_data(ttl=5)
-def fetch_data_safe(symbol, tf):
-    # সব মার্কেটের জন্য ৫ দিনের (5d) ডেটা ফেচ করা হলো যাতে পর্যাপ্ত হিস্ট্রি থাকে
-    return yf.download(symbol, period="5d", interval=tf, progress=False)
+def fetch_data_safe(symbol, tf, m_type):
+    # স্টক ও কমোডিটির জন্য শুধু আজকের ফ্রেশ ডেটা (1d), ক্রিপ্টোর জন্য 2d
+    if m_type == "Crypto (24/7)":
+        fetch_p = "2d"
+    else:
+        fetch_p = "1d"
+    return yf.download(symbol, period=fetch_p, interval=tf, progress=False)
 
 # ---------------------------------------------------------
 # 3. LIVE DATA FETCHING ENGINE (TOP SECTION)
@@ -136,8 +140,8 @@ scanned_results = []
 
 for name, symbol in tickers.items():
     try:
-        data = fetch_data_safe(symbol, timeframe)
-        if data.empty or len(data) < 5:
+        data = fetch_data_safe(symbol, timeframe, market_type)
+        if data.empty or len(data) < 3:
             continue
         
         if isinstance(data.columns, pd.MultiIndex):
@@ -230,12 +234,12 @@ with col2:
 asset_symbol = tickers[selected_asset]
 
 try:
-    c_data = fetch_data_safe(asset_symbol, timeframe)
+    c_data = fetch_data_safe(asset_symbol, timeframe, market_type)
     
     if isinstance(c_data.columns, pd.MultiIndex):
         c_data.columns = c_data.columns.get_level_values(0)
 
-    if not c_data.empty and len(c_data) >= 5:
+    if not c_data.empty and len(c_data) >= 3:
         df_chart = calculate_indicators(c_data.copy()).tail(50)
 
         # UTC to IST Timezone Conversion
@@ -311,7 +315,7 @@ try:
         )
         fig.add_hline(y=0, line_dash="solid", line_color="gray", row=4, col=1)
 
-        # Compact Layout Settings (Height 220px for single-screen fit)
+        # Compact Layout Settings
         fig.update_layout(
             template="plotly_dark",
             xaxis_rangeslider_visible=False,
@@ -323,13 +327,13 @@ try:
 
         fig.update_xaxes(
             type='date',
-            tickformat="%b %d, %I:%M %p",
+            tickformat="%I:%M %p",
             row=4, col=1
         )
 
         st.plotly_chart(fig, use_container_width=True)
     else:
-        st.warning("⚠️ Insufficient historical data available for this asset/timeframe.")
+        st.warning("⚠️ Insufficient intraday data available for today.")
 except Exception as e:
     st.error(f"Error loading chart: {e}")
 
