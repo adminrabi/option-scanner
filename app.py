@@ -10,18 +10,19 @@ from plotly.subplots import make_subplots
 # Streamlit Page Config (Wide Layout)
 st.set_page_config(page_title="Pro Scalping Scanner v3.0", layout="wide")
 
-# Custom CSS for Compact UI
+# Custom CSS for Professional Compact Terminal Look
 st.markdown("""
     <style>
         .block-container {
-            padding-top: 0.8rem;
-            padding-bottom: 0.8rem;
-            padding-left: 1rem;
-            padding-right: 1rem;
+            padding-top: 0.5rem;
+            padding-bottom: 0.5rem;
+            padding-left: 0.8rem;
+            padding-right: 0.8rem;
         }
-        h1 { font-size: 1.4rem !important; margin-bottom: 0rem; }
-        h3 { font-size: 1.0rem !important; margin-top: 0.1rem; margin-bottom: 0.1rem; }
-        hr { margin-top: 0.3rem; margin-bottom: 0.3rem; }
+        h1 { font-size: 1.2rem !important; margin-bottom: 0rem; color: #00ffcc; }
+        h3 { font-size: 0.95rem !important; margin-top: 0.1rem; margin-bottom: 0.1rem; }
+        hr { margin-top: 0.2rem; margin-bottom: 0.2rem; }
+        .element-container { margin-bottom: 0.5rem; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -37,7 +38,7 @@ st.title("⚡ Pro Scalper: Stock, Commodity & Crypto Scanner")
 # ---------------------------------------------------------
 # 1. SIDEBAR MULTI-MARKET SELECTOR & REFRESH CONTROLLER
 # ---------------------------------------------------------
-st.sidebar.header("🎯 Market & Timeframe Options")
+st.sidebar.header("🎯 Market & Timeframe")
 
 market_type = st.sidebar.radio(
     "Select Market Domain:",
@@ -95,7 +96,7 @@ if "signal_memory" not in st.session_state:
     st.session_state.signal_memory = []
 
 # ---------------------------------------------------------
-# 2. INDICATOR CALCULATIONS (ROBUST & ACCURATE)
+# 2. INDICATOR CALCULATIONS
 # ---------------------------------------------------------
 def calculate_indicators(df):
     delta = df['Close'].diff()
@@ -124,11 +125,7 @@ def calculate_indicators(df):
 
 @st.cache_data(ttl=5)
 def fetch_data_safe(symbol, tf, m_type):
-    # স্টক ও কমোডিটির জন্য শুধু আজকের ফ্রেশ ডেটা (1d), ক্রিপ্টোর জন্য 2d
-    if m_type == "Crypto (24/7)":
-        fetch_p = "2d"
-    else:
-        fetch_p = "1d"
+    fetch_p = "2d" if m_type == "Crypto (24/7)" else "1d"
     return yf.download(symbol, period=fetch_p, interval=tf, progress=False)
 
 # ---------------------------------------------------------
@@ -214,18 +211,18 @@ for name, symbol in tickers.items():
     except Exception:
         continue
 
-# Render Compact Live Results Table (Height 140px)
+# Render Compact Live Results Table (Height 130px)
 if scanned_results:
     res_df = pd.DataFrame(scanned_results)
-    st.dataframe(res_df, use_container_width=True, height=140)
+    st.dataframe(res_df, use_container_width=True, height=130)
 else:
-    st.warning("Fetching live market data... Please wait a moment.")
+    st.warning("Fetching live market data...")
 
 # ---------------------------------------------------------
-# 4. LIVE PROFESSIONAL CANDLESTICK & INDICATORS (SLIM MIDDLE SECTION)
+# 4. LIVE PROFESSIONAL CANDLESTICK & INDICATORS (COMPACT)
 # ---------------------------------------------------------
 st.markdown("---")
-col1, col2 = st.columns([1, 3])
+col1, col2 = st.columns([1, 4])
 with col1:
     st.subheader("🖥️ Live Chart")
 with col2:
@@ -240,7 +237,7 @@ try:
         c_data.columns = c_data.columns.get_level_values(0)
 
     if not c_data.empty and len(c_data) >= 3:
-        df_chart = calculate_indicators(c_data.copy()).tail(50)
+        df_chart = calculate_indicators(c_data.copy()).tail(40)
 
         # UTC to IST Timezone Conversion
         df_chart.index = pd.to_datetime(df_chart.index)
@@ -249,11 +246,11 @@ try:
         else:
             df_chart.index = df_chart.index.tz_convert('Asia/Kolkata')
 
-        # Create Ultra Slim 4 Subplots
+        # Create Ultra Compact 4 Subplots
         fig = make_subplots(
             rows=4, cols=1, 
             shared_xaxes=True, 
-            vertical_spacing=0.02,
+            vertical_spacing=0.01,
             row_heights=[0.38, 0.21, 0.21, 0.20],
             subplot_titles=(f"{selected_asset}", "RSI", "Stoch", "AO")
         )
@@ -315,14 +312,15 @@ try:
         )
         fig.add_hline(y=0, line_dash="solid", line_color="gray", row=4, col=1)
 
-        # Compact Layout Settings
+        # Compact Layout Settings (Height 210px for crisp single-screen fit)
         fig.update_layout(
             template="plotly_dark",
             xaxis_rangeslider_visible=False,
-            height=220,
-            margin=dict(l=2, r=2, t=10, b=2),
+            height=210,
+            margin=dict(l=2, r=2, t=8, b=2),
             showlegend=False,
-            hovermode="x unified"
+            hovermode="x unified",
+            font=dict(size=9)
         )
 
         fig.update_xaxes(
@@ -333,7 +331,7 @@ try:
 
         st.plotly_chart(fig, use_container_width=True)
     else:
-        st.warning("⚠️ Insufficient intraday data available for today.")
+        st.warning("⚠️ Insufficient intraday data available.")
 except Exception as e:
     st.error(f"Error loading chart: {e}")
 
@@ -363,4 +361,4 @@ for i in range(15):
         })
 
 mem_df = pd.DataFrame(fixed_rows)
-st.dataframe(mem_df, use_container_width=True, height=140)
+st.dataframe(mem_df, use_container_width=True, height=130)
