@@ -10,19 +10,18 @@ from plotly.subplots import make_subplots
 # Streamlit Page Config (Wide Layout)
 st.set_page_config(page_title="Pro Scalping Scanner v3.0", layout="wide")
 
-# Custom CSS for Strict Compact UI & Overlap Prevention
+# Custom CSS for Professional Terminal Look
 st.markdown("""
     <style>
         .block-container {
-            padding-top: 0.4rem;
-            padding-bottom: 0.4rem;
-            padding-left: 0.6rem;
-            padding-right: 0.6rem;
+            padding-top: 0.5rem;
+            padding-bottom: 0.5rem;
+            padding-left: 1rem;
+            padding-right: 1rem;
         }
-        h1 { font-size: 1.1rem !important; margin-bottom: 0rem; color: #00ffcc; }
-        h3 { font-size: 0.85rem !important; margin-top: 0rem; margin-bottom: 0rem; }
-        hr { margin-top: 0.2rem; margin-bottom: 0.2rem; }
-        .stSelectbox label { font-size: 0.8rem !important; }
+        h1 { font-size: 1.3rem !important; margin-bottom: 0rem; color: #00ffcc; }
+        h3 { font-size: 0.95rem !important; margin-top: 0.2rem; margin-bottom: 0.2rem; }
+        hr { margin-top: 0.3rem; margin-bottom: 0.3rem; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -96,7 +95,7 @@ if "signal_memory" not in st.session_state:
     st.session_state.signal_memory = []
 
 # ---------------------------------------------------------
-# 2. INDICATOR CALCULATIONS (ROBUST WITH MIN_PERIODS=1)
+# 2. INDICATOR CALCULATIONS (ROBUST & DYNAMIC)
 # ---------------------------------------------------------
 def calculate_indicators(df):
     delta = df['Close'].diff()
@@ -109,17 +108,17 @@ def calculate_indicators(df):
     rsi_min = rsi.rolling(window=14, min_periods=1).min()
     rsi_max = rsi.rolling(window=14, min_periods=1).max()
     stoch_rsi = (rsi - rsi_min) / (rsi_max - rsi_min + 1e-10)
-    df['Stoch_K'] = (stoch_rsi.rolling(window=3, min_periods=1).mean() * 100).fillna(50)
-    df['Stoch_D'] = df['Stoch_K'].rolling(window=3, min_periods=1).mean().fillna(50)
+    df['Stoch_K'] = stoch_rsi.rolling(window=3, min_periods=1).mean() * 100
+    df['Stoch_D'] = df['Stoch_K'].rolling(window=3, min_periods=1).mean()
 
     candle_range = df['High'] - df['Low']
     candle_range = candle_range.replace(0, 1e-10)
-    df['Buying_Power'] = (((df['Close'] - df['Low']) / candle_range) * 100).fillna(50)
-    df['Selling_Power'] = (((df['High'] - df['Close']) / candle_range) * 100).fillna(50)
+    df['Buying_Power'] = ((df['Close'] - df['Low']) / candle_range) * 100
+    df['Selling_Power'] = ((df['High'] - df['Close']) / candle_range) * 100
 
     median_price = (df['High'] + df['Low']) / 2
     ao = median_price.rolling(window=5, min_periods=1).mean() - median_price.rolling(window=34, min_periods=1).mean()
-    df['AO'] = ao.fillna(0)
+    df['AO'] = ao
 
     return df
 
@@ -211,15 +210,15 @@ for name, symbol in tickers.items():
     except Exception:
         continue
 
-# Render Compact Live Results Table (Height 120px)
+# Render Scan Results Table (Optimized Height 130px)
 if scanned_results:
     res_df = pd.DataFrame(scanned_results)
-    st.dataframe(res_df, use_container_width=True, height=120)
+    st.dataframe(res_df, use_container_width=True, height=130)
 else:
     st.warning("Fetching live market data...")
 
 # ---------------------------------------------------------
-# 4. LIVE PROFESSIONAL CANDLESTICK & INDICATORS (FIXED OVERLAP & LINES)
+# 4. LIVE PROFESSIONAL CANDLESTICK & INDICATORS (EXPANDED CHART)
 # ---------------------------------------------------------
 st.markdown("---")
 
@@ -227,7 +226,7 @@ c_head1, c_head2 = st.columns([2, 2])
 with c_head1:
     st.subheader("🖥️ Live Visual Chart")
 with c_head2:
-    selected_asset = st.selectbox("Select Asset:", list(tickers.keys()), label_visibility="collapsed")
+    selected_asset = st.selectbox("Select Asset for Chart:", list(tickers.keys()), label_visibility="collapsed")
 
 asset_symbol = tickers[selected_asset]
 
@@ -238,7 +237,7 @@ try:
         c_data.columns = c_data.columns.get_level_values(0)
 
     if not c_data.empty and len(c_data) >= 2:
-        df_chart = calculate_indicators(c_data.copy()).tail(40)
+        df_chart = calculate_indicators(c_data.copy()).tail(50)
 
         # UTC to IST Timezone Conversion
         df_chart.index = pd.to_datetime(df_chart.index)
@@ -247,13 +246,13 @@ try:
         else:
             df_chart.index = df_chart.index.tz_convert('Asia/Kolkata')
 
-        # Create Ultra Compact 4 Subplots
+        # Create Expanded 4 Subplots for Better Clarity
         fig = make_subplots(
             rows=4, cols=1, 
             shared_xaxes=True, 
-            vertical_spacing=0.01,
-            row_heights=[0.38, 0.21, 0.21, 0.20],
-            subplot_titles=(f"{selected_asset} Price", "RSI", "Stoch", "AO")
+            vertical_spacing=0.03,
+            row_heights=[0.42, 0.19, 0.19, 0.20],
+            subplot_titles=(f"{selected_asset} Price Movement", "RSI (14)", "Stochastic RSI", "Awesome Oscillator (AO)")
         )
 
         # 1. Candlestick Chart
@@ -273,7 +272,7 @@ try:
 
         # 2. RSI Line
         fig.add_trace(
-            go.Scatter(x=df_chart.index, y=df_chart['RSI'], name="RSI", line=dict(color='#ab47bc', width=1.0)),
+            go.Scatter(x=df_chart.index, y=df_chart['RSI'], name="RSI", line=dict(color='#ab47bc', width=1.5)),
             row=2, col=1
         )
         fig.add_hline(y=70, line_dash="dash", line_color="red", row=2, col=1)
@@ -281,11 +280,11 @@ try:
 
         # 3. Stochastic RSI (%K & %D)
         fig.add_trace(
-            go.Scatter(x=df_chart.index, y=df_chart['Stoch_K'], name="Stoch %K", line=dict(color='#2196f3', width=0.9)),
+            go.Scatter(x=df_chart.index, y=df_chart['Stoch_K'], name="Stoch %K", line=dict(color='#2196f3', width=1.2)),
             row=3, col=1
         )
         fig.add_trace(
-            go.Scatter(x=df_chart.index, y=df_chart['Stoch_D'], name="Stoch %D", line=dict(color='#ff9800', width=0.9)),
+            go.Scatter(x=df_chart.index, y=df_chart['Stoch_D'], name="Stoch %D", line=dict(color='#ff9800', width=1.2)),
             row=3, col=1
         )
         fig.add_hline(y=80, line_dash="dash", line_color="red", row=3, col=1)
@@ -313,15 +312,15 @@ try:
         )
         fig.add_hline(y=0, line_dash="solid", line_color="gray", row=4, col=1)
 
-        # Compact Layout Settings (Height 200px for single-screen view)
+        # Expanded Chart Layout (Height 360px for crystal clear visibility)
         fig.update_layout(
             template="plotly_dark",
             xaxis_rangeslider_visible=False,
-            height=200,
-            margin=dict(l=2, r=2, t=6, b=2),
+            height=360,
+            margin=dict(l=5, r=5, t=20, b=5),
             showlegend=False,
             hovermode="x unified",
-            font=dict(size=8)
+            font=dict(size=10)
         )
 
         fig.update_xaxes(
@@ -362,4 +361,4 @@ for i in range(15):
         })
 
 mem_df = pd.DataFrame(fixed_rows)
-st.dataframe(mem_df, use_container_width=True, height=120)
+st.dataframe(mem_df, use_container_width=True, height=140)
