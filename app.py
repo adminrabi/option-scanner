@@ -96,7 +96,7 @@ if "signal_memory" not in st.session_state:
     st.session_state.signal_memory = []
 
 # ---------------------------------------------------------
-# 2. INDICATOR CALCULATIONS
+# 2. INDICATOR CALCULATIONS (ROBUST WITH MIN_PERIODS=1)
 # ---------------------------------------------------------
 def calculate_indicators(df):
     delta = df['Close'].diff()
@@ -109,17 +109,17 @@ def calculate_indicators(df):
     rsi_min = rsi.rolling(window=14, min_periods=1).min()
     rsi_max = rsi.rolling(window=14, min_periods=1).max()
     stoch_rsi = (rsi - rsi_min) / (rsi_max - rsi_min + 1e-10)
-    df['Stoch_K'] = stoch_rsi.rolling(window=3, min_periods=1).mean() * 100
-    df['Stoch_D'] = df['Stoch_K'].rolling(window=3, min_periods=1).mean()
+    df['Stoch_K'] = (stoch_rsi.rolling(window=3, min_periods=1).mean() * 100).fillna(50)
+    df['Stoch_D'] = df['Stoch_K'].rolling(window=3, min_periods=1).mean().fillna(50)
 
     candle_range = df['High'] - df['Low']
     candle_range = candle_range.replace(0, 1e-10)
-    df['Buying_Power'] = ((df['Close'] - df['Low']) / candle_range) * 100
-    df['Selling_Power'] = ((df['High'] - df['Close']) / candle_range) * 100
+    df['Buying_Power'] = (((df['Close'] - df['Low']) / candle_range) * 100).fillna(50)
+    df['Selling_Power'] = (((df['High'] - df['Close']) / candle_range) * 100).fillna(50)
 
     median_price = (df['High'] + df['Low']) / 2
     ao = median_price.rolling(window=5, min_periods=1).mean() - median_price.rolling(window=34, min_periods=1).mean()
-    df['AO'] = ao
+    df['AO'] = ao.fillna(0)
 
     return df
 
@@ -138,7 +138,7 @@ scanned_results = []
 for name, symbol in tickers.items():
     try:
         data = fetch_data_safe(symbol, timeframe, market_type)
-        if data.empty or len(data) < 3:
+        if data.empty or len(data) < 2:
             continue
         
         if isinstance(data.columns, pd.MultiIndex):
@@ -219,11 +219,10 @@ else:
     st.warning("Fetching live market data...")
 
 # ---------------------------------------------------------
-# 4. LIVE PROFESSIONAL CANDLESTICK & INDICATORS (FIXED OVERLAP)
+# 4. LIVE PROFESSIONAL CANDLESTICK & INDICATORS (FIXED OVERLAP & LINES)
 # ---------------------------------------------------------
 st.markdown("---")
 
-# Clean separated layout for title and selector to avoid any text overlapping
 c_head1, c_head2 = st.columns([2, 2])
 with c_head1:
     st.subheader("🖥️ Live Visual Chart")
@@ -238,7 +237,7 @@ try:
     if isinstance(c_data.columns, pd.MultiIndex):
         c_data.columns = c_data.columns.get_level_values(0)
 
-    if not c_data.empty and len(c_data) >= 3:
+    if not c_data.empty and len(c_data) >= 2:
         df_chart = calculate_indicators(c_data.copy()).tail(40)
 
         # UTC to IST Timezone Conversion
